@@ -1,1 +1,3 @@
 # binary-release
+
+test
