@@ -34,8 +34,8 @@ deployment:
   master:
     branch: master
     commands:
-        - utils/ghr -t $GITHUB_TOKEN -u pandemicsyn --replace --prerelease `cat VERSION` $BUILDPATH
+        - utils/ghr -t $GITHUB_TOKEN -u getcfs --replace --prerelease `cat VERSION` $BUILDPATH
   production:
     branch: production
     commands:
-        - utils/ghr -t $GITHUB_TOKEN -u pandemicsyn --replace `cat VERSION` $BUILDPATH
+        - utils/ghr -t $GITHUB_TOKEN -u getcfs --replace `cat VERSION` $BUILDPATH
