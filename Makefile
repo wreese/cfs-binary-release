@@ -2,22 +2,40 @@ SHA := $(shell git rev-parse --short HEAD)
 VERSION := $(shell cat VERSION)
 ITTERATION := $(shell date +%s)
 OGOPATH := $(shell echo $$GOPATH)
-SRCPATH := "binaries"
+SRCPATH := "mains/"
+BUILDPATH := "build/"
 export GO15VENDOREXPERIMENT=0
 
+
+#global build vars
+GOVERSION := $(shell go version | sed -e 's/ /-/g')
+RINGVERSION := $(shell python -c 'import sys, json; print [x["Rev"] for x in json.load(sys.stdin)["Deps"] if x["ImportPath"] == "github.com/gholt/ring"][0]' < Godeps/Godeps.json)
+VERSION := $(shell python -c 'import sys, json; print [x["Rev"] for x in json.load(sys.stdin)["Deps"] if x["ImportPath"] == "github.com/gholt/ring"][0]' < Godeps/Godeps.json)
 
 sync-all: oort-cli oort-value oort-group syndicate cfsdvp cfs formic
 
 save:
 	godep save ./...
 
+clean:
+	rm -rf $(BUILDPATH)
+
 build:
-	godep go build -v ./...
+	mkdir -p $(BUILDPATH)
+	godep go build -i -v -o build/oort-cli github.com/getcfs/cfs-binary-release/mains/oort-cli
+	godep go build -i -v -o build/oort-bench github.com/getcfs/cfs-binary-release/mains/oort-bench
+	godep go build -i -v -o build/oort-valued github.com/getcfs/cfs-binary-release/mains/oort-valued
+	godep go build -i -v -o build/oort-groupd github.com/getcfs/cfs-binary-release/mains/oort-groupd
+	godep go build -i -v -o build/synd github.com/getcfs/cfs-binary-release/mains/synd
+	godep go build -i -v -o build/syndicate-client github.com/getcfs/cfs-binary-release/mains/syndicate-client
+	godep go build -i -v -o build/cfsdvp github.com/getcfs/cfs-binary-release/mains/cfsdvp
+	godep go build -i -v -o build/cfs github.com/getcfs/cfs-binary-release/mains/cfs
+	godep go build -i -v -o build/formicd github.com/getcfs/cfs-binary-release/mains/formicd
 
 install:
 	godep go install -v ./...
 
-test: build
+test:
 	godep go test -v ./...
 
 prerelease: install
