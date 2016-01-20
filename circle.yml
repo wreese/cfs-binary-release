@@ -1,0 +1,39 @@
+machine:
+  pre:
+    - wget https://storage.googleapis.com/golang/go1.5.3.linux-amd64.tar.gz
+    - mkdir ~/go1.5.3
+    - tar -C ~/go1.5.3 -xzf go1.5.3.linux-amd64.tar.gz
+  environment:
+    GOROOT: ${HOME}/go1.5.3/go
+    GO15VENDOREXPERIMENT: 0
+    GOPATH: ${HOME}/go
+    PATH: $GOPATH/bin:${GOROOT}/bin:${PATH}
+    PPATH: ${HOME}/go/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME
+    BUILDPATH: $PPATH/build/
+  post:
+    - go version
+    - echo $PPATH
+dependencies:
+  pre:
+    - mkdir -p ${HOME}/go/src/github.com/$CIRCLE_PROJECT_USERNAME
+    - mv ~/$CIRCLE_PROJECT_REPONAME ${HOME}/go/src/github.com/$CIRCLE_PROJECT_USERNAME
+    - ln -s $PPATH ~/$CIRCLE_PROJECT_REPONAME
+general:
+  artifacts:
+    - "$PPATH/build"
+test:
+  pre:
+    - go version
+  override:
+    - make test
+  post:
+    - GOOS=linux GOARCH=amd64 make build
+deployment:
+  master:
+    branch: master
+    commands:
+        - utils/ghr -t $GITHUB_TOKEN -u pandemicsyn --replace --prerelease `cat VERSION` $BUILDPATH
+  production:
+    branch: production
+    commands:
+        - utils/ghr -t $GITHUB_TOKEN -u pandemicsyn --replace `cat VERSION` $BUILDPATH
