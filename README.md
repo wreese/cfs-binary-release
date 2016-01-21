@@ -29,7 +29,7 @@ cfs-binary-release is how we perform vendoring AND release management.
 ### Restore
 
 1. Checkout a specific version
-2. Run `godep restore` (which will likely make your existing $GOPATH ugly
+2. Run `godep restore` which will likely make your existing $GOPATH/src ugly, so you might want to `cp -a $GOPATH/src $GOPATH/stashedsrc` so you can flip back later.
 
 ### Todo
 
