@@ -9,12 +9,13 @@ import (
 )
 
 func Test{{.T}}BulkSetAckRead(t *testing.T) {
-    cfg := lowMem{{.T}}StoreConfig()
+    cfg := newTest{{.T}}StoreConfig()
     cfg.MsgRing = &msgRingPlaceholder{}
-    store, _, err := New{{.T}}Store(cfg)
-    if err != nil {
-        t.Fatal("")
+    store, _ := newTest{{.T}}Store(cfg)
+    if err := store.Startup(); err != nil {
+        t.Fatal(err)
     }
+    defer store.Shutdown()
     store.DisableInBulkSetAck()
     n, err := store.newInBulkSetAckMsg(bytes.NewBuffer(make([]byte, 100)), 100)
     if err != nil {
@@ -40,13 +41,14 @@ func Test{{.T}}BulkSetAckRead(t *testing.T) {
 }
 
 func Test{{.T}}BulkSetAckReadLowSendCap(t *testing.T) {
-    cfg := lowMem{{.T}}StoreConfig()
+    cfg := newTest{{.T}}StoreConfig()
     cfg.MsgRing = &msgRingPlaceholder{}
     cfg.BulkSetAckMsgCap = 1
-    store, _, err := New{{.T}}Store(cfg)
-    if err != nil {
-        t.Fatal("")
+    store, _ := newTest{{.T}}Store(cfg)
+    if err := store.Startup(); err != nil {
+        t.Fatal(err)
     }
+    defer store.Shutdown()
     store.DisableInBulkSetAck()
     n, err := store.newInBulkSetAckMsg(bytes.NewBuffer(make([]byte, 100)), 100)
     if err != nil {
@@ -67,16 +69,15 @@ func Test{{.T}}BulkSetAckMsgIncoming(t *testing.T) {
     r := b.Ring()
     r.SetLocalNode(n.ID() + 1) // so we're not responsible for anything
     m := &msgRingPlaceholder{ring: r}
-    cfg := lowMem{{.T}}StoreConfig()
+    cfg := newTest{{.T}}StoreConfig()
     cfg.MsgRing = m
     cfg.InBulkSetAckWorkers = 1
     cfg.InBulkSetAckMsgs = 1
-    store, _, err := New{{.T}}Store(cfg)
-    if err != nil {
-        t.Fatal("")
+    store, _ := newTest{{.T}}Store(cfg)
+    if err := store.Startup(); err != nil {
+        t.Fatal(err)
     }
-    store.EnableAll()
-    defer store.DisableAll()
+    defer store.Shutdown()
     ts, err := store.write(1, 2{{if eq .t "group"}}, 3, 4{{end}}, 0x500, []byte("testing"), true)
     if err != nil {
         t.Fatal(err)
@@ -119,16 +120,15 @@ func Test{{.T}}BulkSetAckMsgIncoming(t *testing.T) {
 
 func Test{{.T}}BulkSetAckMsgIncomingNoRing(t *testing.T) {
     m := &msgRingPlaceholder{}
-    cfg := lowMem{{.T}}StoreConfig()
+    cfg := newTest{{.T}}StoreConfig()
     cfg.MsgRing = m
     cfg.InBulkSetAckWorkers = 1
     cfg.InBulkSetAckMsgs = 1
-    store, _, err := New{{.T}}Store(cfg)
-    if err != nil {
-        t.Fatal("")
+    store, _ := newTest{{.T}}Store(cfg)
+    if err := store.Startup(); err != nil {
+        t.Fatal(err)
     }
-    store.EnableAll()
-    defer store.DisableAll()
+    defer store.Shutdown()
     ts, err := store.write(1, 2{{if eq .t "group"}}, 3, 4{{end}}, 0x500, []byte("testing"), true)
     if err != nil {
         t.Fatal(err)
@@ -171,12 +171,13 @@ func Test{{.T}}BulkSetAckMsgIncomingNoRing(t *testing.T) {
 }
 
 func Test{{.T}}BulkSetAckMsgOut(t *testing.T) {
-    cfg := lowMem{{.T}}StoreConfig()
+    cfg := newTest{{.T}}StoreConfig()
     cfg.MsgRing = &msgRingPlaceholder{}
-    store, _, err := New{{.T}}Store(cfg)
-    if err != nil {
-        t.Fatal("")
+    store, _ := newTest{{.T}}Store(cfg)
+    if err := store.Startup(); err != nil {
+        t.Fatal(err)
     }
+    defer store.Shutdown()
     bsam := store.newOutBulkSetAckMsg()
     if bsam.MsgType() != _{{.TT}}_BULK_SET_ACK_MSG_TYPE {
         t.Fatal(bsam.MsgType())
@@ -235,15 +236,16 @@ func Test{{.T}}BulkSetAckMsgOut(t *testing.T) {
 }
 
 func Test{{.T}}BulkSetAckMsgOutWriteError(t *testing.T) {
-    cfg := lowMem{{.T}}StoreConfig()
+    cfg := newTest{{.T}}StoreConfig()
     cfg.MsgRing = &msgRingPlaceholder{}
-    store, _, err := New{{.T}}Store(cfg)
-    if err != nil {
-        t.Fatal("")
+    store, _ := newTest{{.T}}Store(cfg)
+    if err := store.Startup(); err != nil {
+        t.Fatal(err)
     }
+    defer store.Shutdown()
     bsam := store.newOutBulkSetAckMsg()
     bsam.add(1, 2{{if eq .t "group"}}, 3, 4{{end}}, 0x500)
-    _, err = bsam.WriteContent(&testErrorWriter{})
+    _, err := bsam.WriteContent(&testErrorWriter{})
     if err == nil {
         t.Fatal(err)
     }
@@ -251,13 +253,14 @@ func Test{{.T}}BulkSetAckMsgOutWriteError(t *testing.T) {
 }
 
 func Test{{.T}}BulkSetAckMsgOutHitCap(t *testing.T) {
-    cfg := lowMem{{.T}}StoreConfig()
+    cfg := newTest{{.T}}StoreConfig()
     cfg.MsgRing = &msgRingPlaceholder{}
     cfg.BulkSetAckMsgCap = _{{.TT}}_BULK_SET_ACK_MSG_ENTRY_LENGTH + 3
-    store, _, err := New{{.T}}Store(cfg)
-    if err != nil {
-        t.Fatal("")
+    store, _ := newTest{{.T}}Store(cfg)
+    if err := store.Startup(); err != nil {
+        t.Fatal(err)
     }
+    defer store.Shutdown()
     bsam := store.newOutBulkSetAckMsg()
     if !bsam.add(1, 2{{if eq .t "group"}}, 3, 4{{end}}, 0x500) {
         t.Fatal("")

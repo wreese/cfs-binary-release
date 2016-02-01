@@ -1,7 +1,6 @@
 syntax = "proto3";
 
-package cmdctrl;
-
+package cmdctrlsvc;
 
 service CmdCtrl {
     rpc RingUpdate(Ring) returns (RingUpdateResult) {}

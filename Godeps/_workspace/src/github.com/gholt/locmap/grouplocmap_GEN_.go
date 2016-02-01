@@ -74,6 +74,8 @@ type GroupLocMap interface {
 	// because they are subject to change based on implementation. They are
 	// only provided when stats.String() is called.
 	Stats(debug bool) *GroupLocMapStats
+	// Clear discards all items from the GroupLocMap.
+	Clear()
 }
 
 // GroupLocMapConfig represents the set of values for configuring a
@@ -107,11 +109,11 @@ func resolveGroupLocMapConfig(c *GroupLocMapConfig) *GroupLocMapConfig {
 	if c != nil {
 		*cfg = *c
 	}
-	if env := os.Getenv("GroupLOCMAP_WORKERS"); env != "" {
+	if env := os.Getenv("GROUPLOCMAP_WORKERS"); env != "" {
 		if val, err := strconv.Atoi(env); err == nil {
 			cfg.Workers = val
 		}
-	} else if env = os.Getenv("GroupSTORE_WORKERS"); env != "" {
+	} else if env = os.Getenv("GROUPSTORE_WORKERS"); env != "" {
 		if val, err := strconv.Atoi(env); err == nil {
 			cfg.Workers = val
 		}
@@ -122,7 +124,7 @@ func resolveGroupLocMapConfig(c *GroupLocMapConfig) *GroupLocMapConfig {
 	if cfg.Workers < 1 { // GOMAXPROCS should always give >= 1, but in case
 		cfg.Workers = 1
 	}
-	if env := os.Getenv("GroupLOCMAP_ROOTS"); env != "" {
+	if env := os.Getenv("GROUPLOCMAP_ROOTS"); env != "" {
 		if val, err := strconv.Atoi(env); err == nil {
 			cfg.Roots = val
 		}
@@ -134,7 +136,7 @@ func resolveGroupLocMapConfig(c *GroupLocMapConfig) *GroupLocMapConfig {
 	if cfg.Roots < 2 {
 		cfg.Roots = 2
 	}
-	if env := os.Getenv("GroupLOCMAP_PAGESIZE"); env != "" {
+	if env := os.Getenv("GROUPLOCMAP_PAGESIZE"); env != "" {
 		if val, err := strconv.Atoi(env); err == nil {
 			cfg.PageSize = val
 		}
@@ -148,7 +150,7 @@ func resolveGroupLocMapConfig(c *GroupLocMapConfig) *GroupLocMapConfig {
 	if cfg.PageSize < pageSizeFloor {
 		cfg.PageSize = pageSizeFloor
 	}
-	if env := os.Getenv("GroupLOCMAP_SPLITMULTIPLIER"); env != "" {
+	if env := os.Getenv("GROUPLOCMAP_SPLITMULTIPLIER"); env != "" {
 		if val, err := strconv.ParseFloat(env, 64); err == nil {
 			cfg.SplitMultiplier = val
 		}
@@ -541,71 +543,76 @@ func (locmap *groupLocMap) merge(n *groupLocMapNode) {
 		n.resizingLock.Unlock()
 		return
 	}
-	b := locmap.bits
-	lm := locmap.lowMask
-	aes := an.entries
-	ao := an.overflow
-	aoc := uint32(len(ao))
-	bo := bn.overflow
-	bes := bn.entries
-	for i := uint32(0); i <= lm; i++ {
-		be := &bes[i]
-		if be.blockID == 0 {
-			continue
-		}
-		for {
-			ae := &aes[uint32(be.keyB^be.nameKeyA)&lm]
-			if ae.blockID == 0 {
-				*ae = *be
-				ae.next = 0
-			} else {
-				if an.overflowLowestFree != 0 {
-					oA := an.overflowLowestFree >> b
-					oB := an.overflowLowestFree & lm
-					ae2 := &ao[oA][oB]
-					*ae2 = *be
-					ae2.next = ae.next
-					ae.next = an.overflowLowestFree
-					an.overflowLowestFree = 0
-					for {
-						if oB == lm {
-							oA++
-							if oA == aoc {
+	if an.entries == nil || an.used < bn.used {
+		an, bn = bn, an
+	}
+	if bn.entries != nil && bn.used > 0 {
+		b := locmap.bits
+		lm := locmap.lowMask
+		aes := an.entries
+		ao := an.overflow
+		aoc := uint32(len(ao))
+		bo := bn.overflow
+		bes := bn.entries
+		for i := uint32(0); i <= lm; i++ {
+			be := &bes[i]
+			if be.blockID == 0 {
+				continue
+			}
+			for {
+				ae := &aes[uint32(be.keyB^be.nameKeyA)&lm]
+				if ae.blockID == 0 {
+					*ae = *be
+					ae.next = 0
+				} else {
+					if an.overflowLowestFree != 0 {
+						oA := an.overflowLowestFree >> b
+						oB := an.overflowLowestFree & lm
+						ae2 := &ao[oA][oB]
+						*ae2 = *be
+						ae2.next = ae.next
+						ae.next = an.overflowLowestFree
+						an.overflowLowestFree = 0
+						for {
+							if oB == lm {
+								oA++
+								if oA == aoc {
+									break
+								}
+								oB = 0
+							} else {
+								oB++
+							}
+							if ao[oA][oB].blockID == 0 {
+								an.overflowLowestFree = oA<<b | oB
 								break
 							}
-							oB = 0
-						} else {
-							oB++
 						}
-						if ao[oA][oB].blockID == 0 {
-							an.overflowLowestFree = oA<<b | oB
-							break
-						}
-					}
-				} else {
-					ao = append(ao, make([]groupLocMapEntry, 1<<b))
-					an.overflow = ao
-					if aoc == 0 {
-						ae2 := &ao[0][1]
-						*ae2 = *be
-						ae2.next = ae.next
-						ae.next = 1
-						an.overflowLowestFree = 2
 					} else {
-						ae2 := &ao[aoc][0]
-						*ae2 = *be
-						ae2.next = ae.next
-						ae.next = aoc << b
-						an.overflowLowestFree = aoc<<b + 1
+						ao = append(ao, make([]groupLocMapEntry, 1<<b))
+						an.overflow = ao
+						if aoc == 0 {
+							ae2 := &ao[0][1]
+							*ae2 = *be
+							ae2.next = ae.next
+							ae.next = 1
+							an.overflowLowestFree = 2
+						} else {
+							ae2 := &ao[aoc][0]
+							*ae2 = *be
+							ae2.next = ae.next
+							ae.next = aoc << b
+							an.overflowLowestFree = aoc<<b + 1
+						}
+						aoc++
 					}
-					aoc++
 				}
+				an.used++
+				if be.next == 0 {
+					break
+				}
+				be = &bo[be.next>>b][be.next&lm]
 			}
-			an.used++
-			if be.next == 0 {
-				break
-			}
-			be = &bo[be.next>>b][be.next&lm]
 		}
 	}
 	n.a = nil
@@ -1083,6 +1090,18 @@ func (locmap *groupLocMap) SetInactiveMask(mask uint64) {
 	locmap.inactiveMask = mask
 }
 
+func (locmap *groupLocMap) Clear() {
+	for i := 0; i < len(locmap.roots); i++ {
+		locmap.roots[i].lock.Lock()
+	}
+	for i := 0; i < len(locmap.roots); i++ {
+		locmap.roots[i].entries = nil
+	}
+	for i := 0; i < len(locmap.roots); i++ {
+		locmap.roots[i].lock.Unlock()
+	}
+}
+
 func (locmap *groupLocMap) Stats(debug bool) *GroupLocMapStats {
 	s := &GroupLocMapStats{
 		inactiveMask:      locmap.inactiveMask,
@@ -1148,40 +1167,42 @@ func (locmap *groupLocMap) stats(s *GroupLocMapStats, n *groupLocMapNode, depth 
 		lm := locmap.lowMask
 		es := n.entries
 		ol := &n.overflowLock
-		for i := uint32(0); i <= lm; i++ {
-			e := &es[i]
-			l := &n.entriesLocks[i&locmap.entriesLockMask]
-			o := false
-			l.RLock()
-			if e.blockID == 0 {
-				l.RUnlock()
-				continue
-			}
-			for {
-				if s.statsDebug {
-					s.usedEntries++
-					if o {
-						s.usedInOverflow++
-					}
-					if e.timestamp&s.inactiveMask == 0 {
+		if es != nil {
+			for i := uint32(0); i <= lm; i++ {
+				e := &es[i]
+				l := &n.entriesLocks[i&locmap.entriesLockMask]
+				o := false
+				l.RLock()
+				if e.blockID == 0 {
+					l.RUnlock()
+					continue
+				}
+				for {
+					if s.statsDebug {
+						s.usedEntries++
+						if o {
+							s.usedInOverflow++
+						}
+						if e.timestamp&s.inactiveMask == 0 {
+							s.ActiveCount++
+							s.ActiveBytes += uint64(e.length)
+						} else {
+							s.inactive++
+						}
+					} else if e.timestamp&s.inactiveMask == 0 {
 						s.ActiveCount++
 						s.ActiveBytes += uint64(e.length)
-					} else {
-						s.inactive++
 					}
-				} else if e.timestamp&s.inactiveMask == 0 {
-					s.ActiveCount++
-					s.ActiveBytes += uint64(e.length)
+					if e.next == 0 {
+						break
+					}
+					ol.RLock()
+					e = &n.overflow[e.next>>b][e.next&lm]
+					ol.RUnlock()
+					o = true
 				}
-				if e.next == 0 {
-					break
-				}
-				ol.RLock()
-				e = &n.overflow[e.next>>b][e.next&lm]
-				ol.RUnlock()
-				o = true
+				l.RUnlock()
 			}
-			l.RUnlock()
 		}
 		n.lock.RUnlock()
 	}

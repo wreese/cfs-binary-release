@@ -12,10 +12,15 @@ GOVERSION := $(shell go version | sed -e 's/ /-/g')
 RINGVERSION := $(shell python -c 'import sys, json; print [x["Rev"] for x in json.load(sys.stdin)["Deps"] if x["ImportPath"] == "github.com/gholt/ring"][0]' < Godeps/Godeps.json)
 VERSION := $(shell python -c 'import sys, json; print [x["Rev"] for x in json.load(sys.stdin)["Deps"] if x["ImportPath"] == "github.com/gholt/ring"][0]' < Godeps/Godeps.json)
 
+world: sync-all save update
+
 sync-all: oort-cli oort-value oort-group syndicate cfsdvp cfs formic
 
 save:
-	godep save ./...
+	godep save -v ./...
+
+update:
+	godep update -v ./...
 
 clean:
 	rm -rf $(BUILDPATH)

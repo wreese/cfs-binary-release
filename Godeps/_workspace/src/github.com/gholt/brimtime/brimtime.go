@@ -341,7 +341,19 @@ func TranslateRelativeDate(value string, reference time.Time) time.Time {
 	} else {
 		return time.Time{}
 	}
-	return time.Date(reference.Year()+years, time.Month(int(reference.Month())+months), reference.Day()+days, reference.Hour(), reference.Minute(), reference.Second(), reference.Nanosecond(), reference.Location())
+	candidate := time.Date(reference.Year()+years, time.Month(int(reference.Month())+months), reference.Day()+days, reference.Hour(), reference.Minute(), reference.Second(), reference.Nanosecond(), reference.Location())
+	if months != 0 || years != 0 {
+		targetMonth := int(reference.Month()) + months
+		for targetMonth < 1 {
+			targetMonth += 12
+		}
+		targetMonth = (targetMonth-1)%12 + 1
+		for int(candidate.Month()) != targetMonth {
+			days -= 1
+			candidate = time.Date(reference.Year()+years, time.Month(int(reference.Month())+months), reference.Day()+days, reference.Hour(), reference.Minute(), reference.Second(), reference.Nanosecond(), reference.Location())
+		}
+	}
+	return candidate
 }
 
 // AtForString formats the hour, minute, and duration (in minutes) into a
