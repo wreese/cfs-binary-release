@@ -4,7 +4,7 @@ import (
 	"net"
 	"time"
 
-	pb "github.com/pandemicsyn/syndicate/api/cmdctrl"
+	pb "github.com/pandemicsyn/cmdctrl/api"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"

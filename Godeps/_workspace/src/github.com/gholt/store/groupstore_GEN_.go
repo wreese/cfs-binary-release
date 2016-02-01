@@ -24,6 +24,10 @@ import (
 
 // DefaultGroupStore instances are created with NewGroupStore.
 type DefaultGroupStore struct {
+	runningLock sync.Mutex
+	// 0 = not running, 1 = running, 2 = can't run due to previous error
+	running int
+
 	logCritical             LogFunc
 	logError                LogFunc
 	logWarning              LogFunc
@@ -36,11 +40,12 @@ type DefaultGroupStore struct {
 	freeWriteReqChans       []chan *groupWriteReq
 	pendingWriteReqChans    []chan *groupWriteReq
 	fileMemBlockChan        chan *groupMemBlock
-	freeTOCBlockChan        chan []byte
-	pendingTOCBlockChan     chan []byte
+	freeTOCBlockChan        chan *groupTOCBlock
+	pendingTOCBlockChan     chan *groupTOCBlock
 	activeTOCA              uint64
 	activeTOCB              uint64
 	flushedChan             chan struct{}
+	shutdownChan            chan struct{}
 	locBlocks               []groupLocBlock
 	locBlockIDer            uint64
 	path                    string
@@ -110,6 +115,15 @@ type DefaultGroupStore struct {
 
 	// Used by the flusher only
 	modifications int32
+
+	openReadSeeker    func(fullPath string) (io.ReadSeeker, error)
+	openWriteSeeker   func(fullPath string) (io.WriteSeeker, error)
+	readdirnames      func(fullPath string) ([]string, error)
+	createWriteCloser func(fullPath string) (io.WriteCloser, error)
+	stat              func(fullPath string) (os.FileInfo, error)
+	remove            func(fullPath string) error
+	rename            func(oldFullPath string, newFullPath string) error
+	isNotExist        func(err error) bool
 }
 
 type groupWriteReq struct {
@@ -129,6 +143,14 @@ var enableGroupWriteReq *groupWriteReq = &groupWriteReq{}
 var disableGroupWriteReq *groupWriteReq = &groupWriteReq{}
 var flushGroupWriteReq *groupWriteReq = &groupWriteReq{}
 var flushGroupMemBlock *groupMemBlock = &groupMemBlock{}
+var flushGroupTOCBlock *groupTOCBlock = &groupTOCBlock{}
+var shutdownGroupWriteReq *groupWriteReq = &groupWriteReq{}
+var shutdownGroupMemBlock *groupMemBlock = &groupMemBlock{}
+var shutdownGroupTOCBlock *groupTOCBlock = &groupTOCBlock{}
+
+type groupTOCBlock struct {
+	data []byte
+}
 
 type groupLocBlock interface {
 	timestampnano() int64
@@ -145,13 +167,14 @@ type groupLocBlock interface {
 // and a new one created in its place. This restart procedure is needed when
 // data on disk is detected as corrupted and cannot be easily recovered from; a
 // restart will cause only good entries to be loaded therefore discarding any
-// bad entries due to the corruption.
+// bad entries due to the corruption. A restart may also be requested if the
+// store reaches an unrecoverable state, such as no longer being able to open
+// new files.
 //
 // Note that a lot of buffering, multiple cores, and background processes can
-// be in use and therefore DisableAll() and Flush() should be called prior to
-// the process exiting to ensure all processing is done and the buffers are
-// flushed.
-func NewGroupStore(c *GroupStoreConfig) (*DefaultGroupStore, chan error, error) {
+// be in use and therefore Shutdown() should be called prior to the process
+// exiting to ensure all processing is done and the buffers are flushed.
+func NewGroupStore(c *GroupStoreConfig) (*DefaultGroupStore, chan error) {
 	cfg := resolveGroupStoreConfig(c)
 	lcmap := cfg.GroupLocMap
 	if lcmap == nil {
@@ -165,7 +188,6 @@ func NewGroupStore(c *GroupStoreConfig) (*DefaultGroupStore, chan error, error) 
 		logInfo:                 cfg.LogInfo,
 		logDebug:                cfg.LogDebug,
 		rand:                    cfg.Rand,
-		locBlocks:               make([]groupLocBlock, math.MaxUint16),
 		path:                    cfg.Path,
 		pathtoc:                 cfg.PathTOC,
 		locmap:                  lcmap,
@@ -181,50 +203,14 @@ func NewGroupStore(c *GroupStoreConfig) (*DefaultGroupStore, chan error, error) 
 		checksumInterval:        uint32(cfg.ChecksumInterval),
 		msgRing:                 cfg.MsgRing,
 		restartChan:             make(chan error),
-	}
-	store.freeableMemBlockChans = make([]chan *groupMemBlock, store.workers)
-	for i := 0; i < cap(store.freeableMemBlockChans); i++ {
-		store.freeableMemBlockChans[i] = make(chan *groupMemBlock, store.workers)
-	}
-	store.freeMemBlockChan = make(chan *groupMemBlock, store.workers*store.writePagesPerWorker)
-	store.freeWriteReqChans = make([]chan *groupWriteReq, store.workers)
-	store.pendingWriteReqChans = make([]chan *groupWriteReq, store.workers)
-	store.fileMemBlockChan = make(chan *groupMemBlock, store.workers)
-	store.freeTOCBlockChan = make(chan []byte, store.workers*2)
-	store.pendingTOCBlockChan = make(chan []byte, store.workers)
-	store.flushedChan = make(chan struct{}, 1)
-	for i := 0; i < cap(store.freeMemBlockChan); i++ {
-		memBlock := &groupMemBlock{
-			store:  store,
-			toc:    make([]byte, 0, store.pageSize),
-			values: make([]byte, 0, store.pageSize),
-		}
-		var err error
-		memBlock.id, err = store.addLocBlock(memBlock)
-		if err != nil {
-			return nil, nil, err
-		}
-		store.freeMemBlockChan <- memBlock
-	}
-	for i := 0; i < len(store.freeWriteReqChans); i++ {
-		store.freeWriteReqChans[i] = make(chan *groupWriteReq, store.workers*2)
-		for j := 0; j < store.workers*2; j++ {
-			store.freeWriteReqChans[i] <- &groupWriteReq{errChan: make(chan error, 1)}
-		}
-	}
-	for i := 0; i < len(store.pendingWriteReqChans); i++ {
-		store.pendingWriteReqChans[i] = make(chan *groupWriteReq)
-	}
-	for i := 0; i < cap(store.freeTOCBlockChan); i++ {
-		store.freeTOCBlockChan <- make([]byte, 0, store.pageSize)
-	}
-	go store.tocWriter()
-	go store.fileWriter()
-	for i := 0; i < len(store.freeableMemBlockChans); i++ {
-		go store.memClearer(store.freeableMemBlockChans[i])
-	}
-	for i := 0; i < len(store.pendingWriteReqChans); i++ {
-		go store.memWriter(store.pendingWriteReqChans[i])
+		openReadSeeker:          cfg.OpenReadSeeker,
+		openWriteSeeker:         cfg.OpenWriteSeeker,
+		readdirnames:            cfg.Readdirnames,
+		createWriteCloser:       cfg.CreateWriteCloser,
+		stat:                    cfg.Stat,
+		remove:                  cfg.Remove,
+		rename:                  cfg.Rename,
+		isNotExist:              cfg.IsNotExist,
 	}
 	store.tombstoneDiscardConfig(cfg)
 	store.compactionConfig(cfg)
@@ -235,24 +221,19 @@ func NewGroupStore(c *GroupStoreConfig) (*DefaultGroupStore, chan error, error) 
 	store.bulkSetAckConfig(cfg)
 	store.flusherConfig(cfg)
 	store.diskWatcherConfig(cfg)
-	err := store.recovery()
-	if err != nil {
-		return nil, nil, err
-	}
-	return store, store.restartChan, nil
+	return store, store.restartChan
 }
 
-// ValueCap returns the maximum length of a value the GroupStore can accept.
 func (store *DefaultGroupStore) ValueCap() uint32 {
 	return store.valueCap
 }
 
-func (store *DefaultGroupStore) DisableAll() {
-	store.DisableAllBackground()
+func (store *DefaultGroupStore) disableAll() {
+	store.disableAllBackground()
 	store.DisableWrites()
 }
 
-func (store *DefaultGroupStore) DisableAllBackground() {
+func (store *DefaultGroupStore) disableAllBackground() {
 	wg := &sync.WaitGroup{}
 	for i, f := range []func(){
 		store.DisableDiskWatcher,
@@ -275,7 +256,109 @@ func (store *DefaultGroupStore) DisableAllBackground() {
 	wg.Wait()
 }
 
-func (store *DefaultGroupStore) EnableAll() {
+func (store *DefaultGroupStore) Startup() error {
+	store.runningLock.Lock()
+	switch store.running {
+	case 0: // not running
+	case 1: // running
+		store.runningLock.Unlock()
+		return nil
+	case 2: // can't run due to previous error
+		store.runningLock.Unlock()
+		return errors.New("can't Startup due to previous Startup error")
+	}
+	store.locBlocks = make([]groupLocBlock, math.MaxUint16)
+	store.locBlockIDer = 0
+	// freeableMemBlockChans is a slice of channels so that the individual
+	// memClearers can be communicated with later (flushes, etc.)
+	store.freeableMemBlockChans = make([]chan *groupMemBlock, store.workers)
+	for i := 0; i < cap(store.freeableMemBlockChans); i++ {
+		store.freeableMemBlockChans[i] = make(chan *groupMemBlock, store.workers)
+	}
+	store.freeMemBlockChan = make(chan *groupMemBlock, store.workers*store.writePagesPerWorker)
+	store.freeWriteReqChans = make([]chan *groupWriteReq, store.workers)
+	store.pendingWriteReqChans = make([]chan *groupWriteReq, store.workers)
+	store.fileMemBlockChan = make(chan *groupMemBlock, store.workers)
+	store.freeTOCBlockChan = make(chan *groupTOCBlock, store.workers*2)
+	store.pendingTOCBlockChan = make(chan *groupTOCBlock, store.workers)
+	store.activeTOCA = 0
+	store.activeTOCB = 0
+	store.flushedChan = make(chan struct{}, 1)
+	store.shutdownChan = make(chan struct{}, 1)
+	for i := 0; i < cap(store.freeMemBlockChan); i++ {
+		memBlock := &groupMemBlock{
+			store:  store,
+			toc:    make([]byte, 0, store.pageSize),
+			values: make([]byte, 0, store.pageSize),
+		}
+		var err error
+		memBlock.id, err = store.addLocBlock(memBlock)
+		if err != nil {
+			store.running = 2 // can't run due to previous error
+			store.runningLock.Unlock()
+			return err
+		}
+		store.freeMemBlockChan <- memBlock
+	}
+	for i := 0; i < len(store.freeWriteReqChans); i++ {
+		store.freeWriteReqChans[i] = make(chan *groupWriteReq, store.workers*2)
+		for j := 0; j < store.workers*2; j++ {
+			store.freeWriteReqChans[i] <- &groupWriteReq{errChan: make(chan error, 1)}
+		}
+	}
+	for i := 0; i < len(store.pendingWriteReqChans); i++ {
+		store.pendingWriteReqChans[i] = make(chan *groupWriteReq)
+	}
+	for i := 0; i < cap(store.freeTOCBlockChan); i++ {
+		store.freeTOCBlockChan <- &groupTOCBlock{make([]byte, 0, store.pageSize)}
+	}
+	go store.tocWriter()
+	go store.fileWriter()
+	for i := 0; i < len(store.freeableMemBlockChans); i++ {
+		go store.memClearer(store.freeableMemBlockChans[i])
+	}
+	for i := 0; i < len(store.pendingWriteReqChans); i++ {
+		go store.memWriter(store.pendingWriteReqChans[i])
+	}
+	err := store.recovery()
+	if err != nil {
+		store.running = 2 // can't run due to previous error
+		store.runningLock.Unlock()
+		return err
+	}
+	store.enableAll()
+	store.running = 1 // running
+	store.runningLock.Unlock()
+	return nil
+}
+
+func (store *DefaultGroupStore) Shutdown() {
+	store.runningLock.Lock()
+	if store.running != 1 { // running
+		store.runningLock.Unlock()
+		return
+	}
+	store.disableAll()
+	for _, c := range store.pendingWriteReqChans {
+		c <- shutdownGroupWriteReq
+	}
+	<-store.shutdownChan
+	store.locmap.Clear()
+	store.locBlocks = nil
+	store.freeableMemBlockChans = nil
+	store.freeMemBlockChan = nil
+	store.freeWriteReqChans = nil
+	store.pendingWriteReqChans = nil
+	store.fileMemBlockChan = nil
+	store.freeTOCBlockChan = nil
+	store.pendingTOCBlockChan = nil
+	store.flushedChan = nil
+	store.shutdownChan = nil
+	store.running = 0 // not running
+	store.runningLock.Unlock()
+}
+
+func (store *DefaultGroupStore) enableAll() {
 	wg := &sync.WaitGroup{}
 	for _, f := range []func(){
 		store.EnableWrites,
@@ -299,8 +382,6 @@ func (store *DefaultGroupStore) EnableAll() {
 	wg.Wait()
 }
 
-// DisableWrites will cause any incoming Write or Delete requests to respond
-// with ErrDisabled until EnableWrites is called.
 func (store *DefaultGroupStore) DisableWrites() {
 	store.disableWrites(true)
 }
@@ -316,7 +397,6 @@ func (store *DefaultGroupStore) disableWrites(userCall bool) {
 	store.disableEnableWritesLock.Unlock()
 }
 
-// EnableWrites will resume accepting incoming Write and Delete requests.
 func (store *DefaultGroupStore) EnableWrites() {
 	store.enableWrites(true)
 }
@@ -332,8 +412,6 @@ func (store *DefaultGroupStore) enableWrites(userCall bool) {
 	store.disableEnableWritesLock.Unlock()
 }
 
-// Flush will ensure buffered data (at the time of the call) is written to
-// disk.
 func (store *DefaultGroupStore) Flush() {
 	for _, c := range store.pendingWriteReqChans {
 		c <- flushGroupWriteReq
@@ -341,12 +419,6 @@ func (store *DefaultGroupStore) Flush() {
 	<-store.flushedChan
 }
 
-// Lookup will return timestampmicro, length, err for keyA, keyB, nameKeyA, nameKeyB.
-//
-// Note that err == ErrNotFound with timestampmicro == 0 indicates keyA, keyB, nameKeyA, nameKeyB
-// was not known at all whereas err == ErrNotFound with timestampmicro != 0
-// indicates keyA, keyB, nameKeyA, nameKeyB
-// was known and had a deletion marker (aka tombstone).
 func (store *DefaultGroupStore) Lookup(keyA uint64, keyB uint64, nameKeyA uint64, nameKeyB uint64) (int64, uint32, error) {
 	atomic.AddInt32(&store.lookups, 1)
 	timestampbits, _, length, err := store.lookup(keyA, keyB, nameKeyA, nameKeyB)
@@ -371,8 +443,6 @@ type LookupGroupItem struct {
 	Length         uint32
 }
 
-// LookupGroup returns all the nameKeyA, nameKeyB, TimestampMicro items
-// matching under keyA, keyB.
 func (store *DefaultGroupStore) LookupGroup(keyA uint64, keyB uint64) []LookupGroupItem {
 	atomic.AddInt32(&store.lookupGroups, 1)
 	items := store.locmap.GetGroup(keyA, keyB)
@@ -390,13 +460,6 @@ func (store *DefaultGroupStore) LookupGroup(keyA uint64, keyB uint64) []LookupGr
 	return rv
 }
 
-// Read will return timestampmicro, value, err for keyA, keyB, nameKeyA, nameKeyB;
-// if an incoming value is provided, the read value will be appended to it and
-// the whole returned (useful to reuse an existing []byte).
-//
-// Note that err == ErrNotFound with timestampmicro == 0 indicates keyA, keyB, nameKeyA, nameKeyB
-// was not known at all whereas err == ErrNotFound with timestampmicro != 0
-// indicates keyA, keyB, nameKeyA, nameKeyB was known and had a deletion marker (aka tombstone).
 func (store *DefaultGroupStore) Read(keyA uint64, keyB uint64, nameKeyA uint64, nameKeyB uint64, value []byte) (int64, []byte, error) {
 	atomic.AddInt32(&store.reads, 1)
 	timestampbits, value, err := store.read(keyA, keyB, nameKeyA, nameKeyB, value)
@@ -414,11 +477,6 @@ func (store *DefaultGroupStore) read(keyA uint64, keyB uint64, nameKeyA uint64, 
 	return store.locBlock(id).read(keyA, keyB, nameKeyA, nameKeyB, timestampbits, offset, length, value)
 }
 
-// Write stores timestampmicro, value for keyA, keyB, nameKeyA, nameKeyB
-// and returns the previously stored timestampmicro or returns any error; a
-// newer timestampmicro already in place is not reported as an error. Note that
-// with a write and a delete for the exact same timestampmicro, the delete
-// wins.
 func (store *DefaultGroupStore) Write(keyA uint64, keyB uint64, nameKeyA uint64, nameKeyB uint64, timestampmicro int64, value []byte) (int64, error) {
 	atomic.AddInt32(&store.writes, 1)
 	if timestampmicro < TIMESTAMPMICRO_MIN {
@@ -462,11 +520,6 @@ func (store *DefaultGroupStore) write(keyA uint64, keyB uint64, nameKeyA uint64,
 	return ptimestampbits, err
 }
 
-// Delete stores timestampmicro for keyA, keyB, nameKeyA, nameKeyB
-// and returns the previously stored timestampmicro or returns any error; a
-// newer timestampmicro already in place is not reported as an error. Note that
-// with a write and a delete for the exact same timestampmicro, the delete
-// wins.
 func (store *DefaultGroupStore) Delete(keyA uint64, keyB uint64, nameKeyA uint64, nameKeyB uint64, timestampmicro int64) (int64, error) {
 	atomic.AddInt32(&store.deletes, 1)
 	if timestampmicro < TIMESTAMPMICRO_MIN {
@@ -523,18 +576,22 @@ func (store *DefaultGroupStore) closeLocBlock(locBlockID uint32) error {
 }
 
 func (store *DefaultGroupStore) memClearer(freeableMemBlockChan chan *groupMemBlock) {
-	var tb []byte
+	var tb *groupTOCBlock
 	var tbTS int64
 	var tbOffset int
 	for {
 		memBlock := <-freeableMemBlockChan
-		if memBlock == flushGroupMemBlock {
+		if memBlock == flushGroupMemBlock || memBlock == shutdownGroupMemBlock {
 			if tb != nil {
 				store.pendingTOCBlockChan <- tb
 				tb = nil
 			}
-			store.pendingTOCBlockChan <- nil
-			continue
+			if memBlock == flushGroupMemBlock {
+				store.pendingTOCBlockChan <- flushGroupTOCBlock
+				continue
+			}
+			store.pendingTOCBlockChan <- shutdownGroupTOCBlock
+			break
 		}
 		fl := store.locBlock(memBlock.fileID)
 		if tb != nil && tbTS != fl.timestampnano() {
@@ -562,26 +619,27 @@ func (store *DefaultGroupStore) memClearer(freeableMemBlockChan chan *groupMemBl
 			if store.locmap.Set(keyA, keyB, nameKeyA, nameKeyB, timestampbits, blockID, offset, length, true) > timestampbits {
 				continue
 			}
-			if tb != nil && tbOffset+_GROUP_FILE_ENTRY_SIZE > cap(tb) {
+			if tb != nil && tbOffset+_GROUP_FILE_ENTRY_SIZE > cap(tb.data) {
 				store.pendingTOCBlockChan <- tb
 				tb = nil
 			}
 			if tb == nil {
 				tb = <-store.freeTOCBlockChan
 				tbTS = fl.timestampnano()
-				tb = tb[:8]
-				binary.BigEndian.PutUint64(tb, uint64(tbTS))
+				tb.data = tb.data[:8]
+				binary.BigEndian.PutUint64(tb.data, uint64(tbTS))
 				tbOffset = 8
 			}
-			tb = tb[:tbOffset+_GROUP_FILE_ENTRY_SIZE]
+			tb.data = tb.data[:tbOffset+_GROUP_FILE_ENTRY_SIZE]
+			tbd := tb.data[tbOffset : tbOffset+_GROUP_FILE_ENTRY_SIZE]
 
-			binary.BigEndian.PutUint64(tb[tbOffset:], keyA)
-			binary.BigEndian.PutUint64(tb[tbOffset+8:], keyB)
-			binary.BigEndian.PutUint64(tb[tbOffset+16:], nameKeyA)
-			binary.BigEndian.PutUint64(tb[tbOffset+24:], nameKeyB)
-			binary.BigEndian.PutUint64(tb[tbOffset+32:], timestampbits)
-			binary.BigEndian.PutUint32(tb[tbOffset+40:], offset)
-			binary.BigEndian.PutUint32(tb[tbOffset+44:], length)
+			binary.BigEndian.PutUint64(tbd, keyA)
+			binary.BigEndian.PutUint64(tbd[8:], keyB)
+			binary.BigEndian.PutUint64(tbd[16:], nameKeyA)
+			binary.BigEndian.PutUint64(tbd[24:], nameKeyB)
+			binary.BigEndian.PutUint64(tbd[32:], timestampbits)
+			binary.BigEndian.PutUint32(tbd[40:], offset)
+			binary.BigEndian.PutUint32(tbd[44:], length)
 
 			tbOffset += _GROUP_FILE_ENTRY_SIZE
 		}
@@ -610,13 +668,17 @@ func (store *DefaultGroupStore) memWriter(pendingWriteReqChan chan *groupWriteRe
 			enabled = false
 			continue
 		}
-		if writeReq == flushGroupWriteReq {
+		if writeReq == flushGroupWriteReq || writeReq == shutdownGroupWriteReq {
 			if memBlock != nil && len(memBlock.toc) > 0 {
 				store.fileMemBlockChan <- memBlock
 				memBlock = nil
 			}
-			store.fileMemBlockChan <- flushGroupMemBlock
-			continue
+			if writeReq == flushGroupWriteReq {
+				store.fileMemBlockChan <- flushGroupMemBlock
+				continue
+			}
+			store.fileMemBlockChan <- shutdownGroupMemBlock
+			break
 		}
 		if !enabled && !writeReq.internal {
 			writeReq.errChan <- ErrDisabled
@@ -676,41 +738,79 @@ func (store *DefaultGroupStore) memWriter(pendingWriteReqChan chan *groupWriteRe
 func (store *DefaultGroupStore) fileWriter() {
 	var fl *groupStoreFile
 	memWritersFlushLeft := len(store.pendingWriteReqChans)
+	memWritersShutdownLeft := len(store.pendingWriteReqChans)
 	var tocLen uint64
 	var valueLen uint64
+	var disabledDueToError error
+	freeableMemBlockChanIndex := 0
+	var disabledDueToErrorLogTime time.Time
 	for {
 		memBlock := <-store.fileMemBlockChan
-		if memBlock == flushGroupMemBlock {
-			memWritersFlushLeft--
-			if memWritersFlushLeft > 0 {
-				continue
+		if memBlock == flushGroupMemBlock || memBlock == shutdownGroupMemBlock {
+			if memBlock == flushGroupMemBlock {
+				memWritersFlushLeft--
+				if memWritersFlushLeft > 0 {
+					continue
+				}
+			} else {
+				memWritersShutdownLeft--
+				if memWritersShutdownLeft > 0 {
+					continue
+				}
 			}
 			if fl != nil {
 				err := fl.closeWriting()
 				if err != nil {
-					store.logCritical("fileWriter: error closing %s: %s", fl.name, err)
+					// TODO: Trigger an audit based on this file being in an
+					// unknown state.
+					store.logError("fileWriter: error closing %s: %s", fl.fullPath, err)
 				}
 				fl = nil
 			}
-			for i := 0; i < len(store.freeableMemBlockChans); i++ {
-				store.freeableMemBlockChans[i] <- flushGroupMemBlock
+			if memBlock == flushGroupMemBlock {
+				for i := 0; i < len(store.freeableMemBlockChans); i++ {
+					store.freeableMemBlockChans[i] <- flushGroupMemBlock
+				}
+				memWritersFlushLeft = len(store.pendingWriteReqChans)
+				continue
 			}
-			memWritersFlushLeft = len(store.pendingWriteReqChans)
+			for i := 0; i < len(store.freeableMemBlockChans); i++ {
+				store.freeableMemBlockChans[i] <- shutdownGroupMemBlock
+			}
+			break
+		}
+		if disabledDueToError != nil {
+			if disabledDueToErrorLogTime.Before(time.Now()) {
+				store.logCritical("fileWriter: disabled due to previous critical error: %s", disabledDueToError)
+				disabledDueToErrorLogTime = time.Now().Add(5 * time.Minute)
+			}
+			store.freeableMemBlockChans[freeableMemBlockChanIndex] <- memBlock
+			freeableMemBlockChanIndex++
+			if freeableMemBlockChanIndex >= len(store.freeableMemBlockChans) {
+				freeableMemBlockChanIndex = 0
+			}
 			continue
 		}
 		if fl != nil && (tocLen+uint64(len(memBlock.toc)) >= uint64(store.fileCap) || valueLen+uint64(len(memBlock.values)) > uint64(store.fileCap)) {
 			err := fl.closeWriting()
 			if err != nil {
-				store.logCritical("fileWriter: error closing %s: %s", fl.name, err)
+				// TODO: Trigger an audit based on this file being in an
+				// unknown state.
+				store.logError("fileWriter: error closing %s: %s", fl.fullPath, err)
 			}
 			fl = nil
 		}
 		if fl == nil {
 			var err error
-			fl, err = createGroupReadWriteFile(store, osCreateWriteCloser, osOpenReadSeeker)
+			fl, err = createGroupReadWriteFile(store, store.createWriteCloser, store.openReadSeeker)
 			if err != nil {
-				store.logCritical("fileWriter: %s", err)
-				break
+				store.logCritical("fileWriter: must shutdown because no new files can be opened: %s", err)
+				disabledDueToError = err
+				disabledDueToErrorLogTime = time.Now().Add(5 * time.Minute)
+				go func() {
+					store.Shutdown()
+					store.restartChan <- errors.New("no new files can be opened")
+				}()
 			}
 			tocLen = _GROUP_FILE_HEADER_SIZE
 			valueLen = _GROUP_FILE_HEADER_SIZE
@@ -722,10 +822,11 @@ func (store *DefaultGroupStore) fileWriter() {
 }
 
 func (store *DefaultGroupStore) tocWriter() {
+	memClearersFlushLeft := len(store.freeableMemBlockChans)
+	memClearersShutdownLeft := len(store.freeableMemBlockChans)
 	// writerA is the current toc file while writerB is the previously active
 	// toc writerB is kept around in case a "late" key arrives to be flushed
 	// whom's value is actually in the previous value file.
-	memClearersFlushLeft := len(store.freeableMemBlockChans)
 	var writerA io.WriteCloser
 	var offsetA uint64
 	var writerB io.WriteCloser
@@ -738,20 +839,38 @@ func (store *DefaultGroupStore) tocWriter() {
 	// recovery).
 	term := make([]byte, store.checksumInterval)
 	copy(term[len(term)-8:], []byte("TERM v0 "))
+	disabled := false
+	fatal := func(point int, err error) {
+		store.logCritical("tocWriter: %d %s", point, err)
+		disabled = true
+		go func() {
+			store.Shutdown()
+			store.restartChan <- errors.New("tocWriter encountered a fatal error; restart required")
+		}()
+	}
 OuterLoop:
 	for {
 		t := <-store.pendingTOCBlockChan
-		if t == nil {
-			memClearersFlushLeft--
-			if memClearersFlushLeft > 0 {
-				continue
+		if t == flushGroupTOCBlock || t == shutdownGroupTOCBlock {
+			if t == flushGroupTOCBlock {
+				memClearersFlushLeft--
+				if memClearersFlushLeft > 0 {
+					continue OuterLoop
+				}
+			} else {
+				memClearersShutdownLeft--
+				if memClearersShutdownLeft > 0 {
+					continue OuterLoop
+				}
 			}
 			if writerB != nil {
 				if _, err = writerB.Write(term); err != nil {
-					break OuterLoop
+					fatal(1, err)
+					continue OuterLoop
 				}
 				if err = writerB.Close(); err != nil {
-					break OuterLoop
+					fatal(2, err)
+					continue OuterLoop
 				}
 				writerB = nil
 				atomic.StoreUint64(&store.activeTOCB, 0)
@@ -759,32 +878,44 @@ OuterLoop:
 			}
 			if writerA != nil {
 				if _, err = writerA.Write(term); err != nil {
-					break OuterLoop
+					fatal(3, err)
+					continue OuterLoop
 				}
 				if err = writerA.Close(); err != nil {
-					break OuterLoop
+					fatal(4, err)
+					continue OuterLoop
 				}
 				writerA = nil
 				atomic.StoreUint64(&store.activeTOCA, 0)
 				offsetA = 0
 			}
-			store.flushedChan <- struct{}{}
-			memClearersFlushLeft = len(store.freeableMemBlockChans)
-			continue
+			if t == flushGroupTOCBlock {
+				store.flushedChan <- struct{}{}
+				memClearersFlushLeft = len(store.freeableMemBlockChans)
+				continue OuterLoop
+			}
+			store.shutdownChan <- struct{}{}
+			break
 		}
-		if len(t) > 8 {
-			bts := binary.BigEndian.Uint64(t)
+		if disabled {
+			store.freeTOCBlockChan <- t
+			continue OuterLoop
+		}
+		if len(t.data) > 8 {
+			bts := binary.BigEndian.Uint64(t.data)
 			switch bts {
 			case atomic.LoadUint64(&store.activeTOCA):
-				if _, err = writerA.Write(t[8:]); err != nil {
-					break OuterLoop
+				if _, err = writerA.Write(t.data[8:]); err != nil {
+					fatal(5, err)
+					continue OuterLoop
 				}
-				offsetA += uint64(len(t) - 8)
+				offsetA += uint64(len(t.data) - 8)
 			case atomic.LoadUint64(&store.activeTOCB):
-				if _, err = writerB.Write(t[8:]); err != nil {
-					break OuterLoop
+				if _, err = writerB.Write(t.data[8:]); err != nil {
+					fatal(6, err)
+					continue OuterLoop
 				}
-				offsetB += uint64(len(t) - 8)
+				offsetB += uint64(len(t.data) - 8)
 			default:
 				// An assumption is made here: If the timestampnano for this
 				// toc block doesn't match the last two seen timestampnanos
@@ -792,35 +923,37 @@ OuterLoop:
 				// timestampnano and can close that toc file.
 				if writerB != nil {
 					if _, err = writerB.Write(term); err != nil {
-						break OuterLoop
+						fatal(7, err)
+						continue OuterLoop
 					}
 					if err = writerB.Close(); err != nil {
-						break OuterLoop
+						fatal(8, err)
+						continue OuterLoop
 					}
 				}
 				atomic.StoreUint64(&store.activeTOCB, atomic.LoadUint64(&store.activeTOCA))
 				writerB = writerA
 				offsetB = offsetA
 				atomic.StoreUint64(&store.activeTOCA, bts)
-				var fp *os.File
-				fp, err = os.Create(path.Join(store.pathtoc, fmt.Sprintf("%d.grouptoc", bts)))
+				var fp io.WriteCloser
+				fp, err = store.createWriteCloser(path.Join(store.pathtoc, fmt.Sprintf("%d.grouptoc", bts)))
 				if err != nil {
-					break OuterLoop
+					fatal(9, err)
+					continue OuterLoop
 				}
 				writerA = brimutil.NewMultiCoreChecksummedWriter(fp, int(store.checksumInterval), murmur3.New32, store.workers)
 				if _, err = writerA.Write(head); err != nil {
-					break OuterLoop
+					fatal(10, err)
+					continue OuterLoop
 				}
-				if _, err = writerA.Write(t[8:]); err != nil {
-					break OuterLoop
+				if _, err = writerA.Write(t.data[8:]); err != nil {
+					fatal(11, err)
+					continue OuterLoop
 				}
-				offsetA = _GROUP_FILE_HEADER_SIZE + uint64(len(t)-8)
+				offsetA = _GROUP_FILE_HEADER_SIZE + uint64(len(t.data)-8)
 			}
 		}
-		store.freeTOCBlockChan <- t[:0]
-	}
-	if err != nil {
-		store.logCritical("tocWriter: %s", err)
+		store.freeTOCBlockChan <- t
 	}
 	if writerA != nil {
 		writerA.Close()
@@ -876,19 +1009,15 @@ func (store *DefaultGroupStore) recovery() error {
 		}
 		wg.Wait()
 	}
-	fp, err := os.Open(store.pathtoc)
+	names, err := store.readdirnames(store.pathtoc)
 	if err != nil {
 		spindown()
 		return err
 	}
-	names, err := fp.Readdirnames(-1)
-	fp.Close()
-	if err != nil {
-		spindown()
-		return err
-	}
-	fromDiskCount := 0
 	sort.Strings(names)
+	fromDiskCount := 0
+	var compactNames []string
+	var compactBlockIDs []uint32
 	for i := 0; i < len(names); i++ {
 		if !strings.HasSuffix(names[i], ".grouptoc") {
 			continue
@@ -902,12 +1031,12 @@ func (store *DefaultGroupStore) recovery() error {
 			store.logError("recovery: bad timestamp in name: %#v", names[i])
 			continue
 		}
-		fpr, err := osOpenReadSeeker(path.Join(store.pathtoc, names[i]))
+		fpr, err := store.openReadSeeker(path.Join(store.pathtoc, names[i]))
 		if err != nil {
 			store.logError("recovery: error opening %s: %s", names[i], err)
 			continue
 		}
-		fl, err := newGroupReadFile(store, namets, osOpenReadSeeker)
+		fl, err := newGroupReadFile(store, namets, store.openReadSeeker)
 		if err != nil {
 			store.logError("recovery: error opening %s: %s", names[i][:len(names[i])-3], err)
 			closeIfCloser(fpr)
@@ -920,13 +1049,28 @@ func (store *DefaultGroupStore) recovery() error {
 			// TODO: The auditor should catch this eventually, but we should be
 			// proactive and notify the auditor of the issue here.
 		}
+		if len(errs) != 0 {
+			compactNames = append(compactNames, names[i])
+			compactBlockIDs = append(compactBlockIDs, fl.id)
+		}
 		closeIfCloser(fpr)
 	}
 	spindown()
 	if store.logDebug != nil {
 		dur := time.Now().Sub(start)
 		stats := store.Stats(false).(*GroupStoreStats)
-		store.logInfo("recovery: %d key locations loaded in %s, %.0f/s; %d caused change; %d resulting locations referencing %d bytes.", fromDiskCount, dur, float64(fromDiskCount)/(float64(dur)/float64(time.Second)), causedChangeCount, stats.Values, stats.ValueBytes)
+		store.logDebug("recovery: %d key locations loaded in %s, %.0f/s; %d caused change; %d resulting locations referencing %d bytes.", fromDiskCount, dur, float64(fromDiskCount)/(float64(dur)/float64(time.Second)), causedChangeCount, stats.Values, stats.ValueBytes)
+	}
+	if len(compactNames) > 0 {
+		if store.logDebug != nil {
+			store.logDebug("recovery: secondary recovery started for %d files.", len(compactNames))
+		}
+		for i, name := range compactNames {
+			store.compactFile(name, compactBlockIDs[i], make(chan struct{}))
+		}
+		if store.logDebug != nil {
+			store.logDebug("recovery: secondary recovery completed.")
+		}
 	}
 	return nil
 }
