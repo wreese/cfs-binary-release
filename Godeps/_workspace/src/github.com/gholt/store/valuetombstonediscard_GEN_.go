@@ -6,16 +6,17 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gopkg.in/gholt/brimtime.v1"
+	"github.com/gholt/brimtime"
 )
 
 type valueTombstoneDiscardState struct {
-	interval       int
-	age            uint64
-	batchSize      int
-	notifyChanLock sync.Mutex
-	notifyChan     chan *bgNotification
-	localRemovals  [][]valueLocalRemovalEntry
+	interval  int
+	age       uint64
+	batchSize int
+
+	startupShutdownLock sync.Mutex
+	notifyChan          chan *bgNotification
+	localRemovals       [][]valueLocalRemovalEntry
 }
 
 type valueLocalRemovalEntry struct {
@@ -25,47 +26,23 @@ type valueLocalRemovalEntry struct {
 	timestampbits uint64
 }
 
-func (store *DefaultValueStore) tombstoneDiscardConfig(cfg *ValueStoreConfig) {
+func (store *defaultValueStore) tombstoneDiscardConfig(cfg *ValueStoreConfig) {
 	store.tombstoneDiscardState.interval = cfg.TombstoneDiscardInterval
 	store.tombstoneDiscardState.age = (uint64(cfg.TombstoneAge) * uint64(time.Second) / 1000) << _TSB_UTIL_BITS
 	store.tombstoneDiscardState.batchSize = cfg.TombstoneDiscardBatchSize
 }
 
-// TombstoneDiscardPass will immediately execute a pass to discard expired
-// tombstones (deletion markers) rather than waiting for the next interval. If
-// a pass is currently executing, it will be stopped and restarted so that a
-// call to this function ensures one complete pass occurs.
-func (store *DefaultValueStore) TombstoneDiscardPass() {
-	store.tombstoneDiscardState.notifyChanLock.Lock()
-	if store.tombstoneDiscardState.notifyChan == nil {
-		store.tombstoneDiscardPass(make(chan *bgNotification))
-	} else {
-		c := make(chan struct{}, 1)
-		store.tombstoneDiscardState.notifyChan <- &bgNotification{
-			action:   _BG_PASS,
-			doneChan: c,
-		}
-		<-c
-	}
-	store.tombstoneDiscardState.notifyChanLock.Unlock()
-}
-
-// EnableTombstoneDiscard will resume discard passes. A discard pass removes
-// expired tombstones (deletion markers).
-func (store *DefaultValueStore) EnableTombstoneDiscard() {
-	store.tombstoneDiscardState.notifyChanLock.Lock()
+func (store *defaultValueStore) tombstoneDiscardStartup() {
+	store.tombstoneDiscardState.startupShutdownLock.Lock()
 	if store.tombstoneDiscardState.notifyChan == nil {
 		store.tombstoneDiscardState.notifyChan = make(chan *bgNotification, 1)
 		go store.tombstoneDiscardLauncher(store.tombstoneDiscardState.notifyChan)
 	}
-	store.tombstoneDiscardState.notifyChanLock.Unlock()
+	store.tombstoneDiscardState.startupShutdownLock.Unlock()
 }
 
-// DisableTombstoneDiscard will stop any discard passes until
-// EnableTombstoneDiscard is called. A discard pass removes expired tombstones
-// (deletion markers).
-func (store *DefaultValueStore) DisableTombstoneDiscard() {
-	store.tombstoneDiscardState.notifyChanLock.Lock()
+func (store *defaultValueStore) tombstoneDiscardShutdown() {
+	store.tombstoneDiscardState.startupShutdownLock.Lock()
 	if store.tombstoneDiscardState.notifyChan != nil {
 		c := make(chan struct{}, 1)
 		store.tombstoneDiscardState.notifyChan <- &bgNotification{
@@ -75,10 +52,10 @@ func (store *DefaultValueStore) DisableTombstoneDiscard() {
 		<-c
 		store.tombstoneDiscardState.notifyChan = nil
 	}
-	store.tombstoneDiscardState.notifyChanLock.Unlock()
+	store.tombstoneDiscardState.startupShutdownLock.Unlock()
 }
 
-func (store *DefaultValueStore) tombstoneDiscardLauncher(notifyChan chan *bgNotification) {
+func (store *defaultValueStore) tombstoneDiscardLauncher(notifyChan chan *bgNotification) {
 	interval := float64(store.tombstoneDiscardState.interval) * float64(time.Second)
 	store.randMutex.Lock()
 	nextRun := time.Now().Add(time.Duration(interval + interval*store.rand.NormFloat64()*0.1))
@@ -121,13 +98,11 @@ func (store *DefaultValueStore) tombstoneDiscardLauncher(notifyChan chan *bgNoti
 	}
 }
 
-func (store *DefaultValueStore) tombstoneDiscardPass(notifyChan chan *bgNotification) *bgNotification {
-	if store.logDebug != nil {
-		begin := time.Now()
-		defer func() {
-			store.logDebug("tombstoneDiscard: pass took %s", time.Now().Sub(begin))
-		}()
-	}
+func (store *defaultValueStore) tombstoneDiscardPass(notifyChan chan *bgNotification) *bgNotification {
+	begin := time.Now()
+	defer func() {
+		store.logDebug("tombstoneDiscard: pass took %s", time.Now().Sub(begin))
+	}()
 	if n := store.tombstoneDiscardPassLocalRemovals(notifyChan); n != nil {
 		return n
 	}
@@ -137,7 +112,7 @@ func (store *DefaultValueStore) tombstoneDiscardPass(notifyChan chan *bgNotifica
 // tombstoneDiscardPassLocalRemovals removes all entries marked with the
 // _TSB_LOCAL_REMOVAL bit. These are entries that other routines have indicated
 // are no longer needed in memory.
-func (store *DefaultValueStore) tombstoneDiscardPassLocalRemovals(notifyChan chan *bgNotification) *bgNotification {
+func (store *defaultValueStore) tombstoneDiscardPassLocalRemovals(notifyChan chan *bgNotification) *bgNotification {
 	// Each worker will perform a pass on a subsection of each partition's key
 	// space. Additionally, each worker will start their work on different
 	// partition. This reduces contention for a given section of the locmap.
@@ -207,7 +182,7 @@ func (store *DefaultValueStore) tombstoneDiscardPassLocalRemovals(notifyChan cha
 // tombstoneDiscardPassExpiredDeletions scans for entries marked with
 // _TSB_DELETION (but not _TSB_LOCAL_REMOVAL) that are older than the maximum
 // tombstone age and marks them for _TSB_LOCAL_REMOVAL.
-func (store *DefaultValueStore) tombstoneDiscardPassExpiredDeletions(notifyChan chan *bgNotification) *bgNotification {
+func (store *defaultValueStore) tombstoneDiscardPassExpiredDeletions(notifyChan chan *bgNotification) *bgNotification {
 	// Each worker will perform a pass on a subsection of each partition's key
 	// space. Additionally, each worker will start their work on different
 	// partition. This reduces contention for a given section of the locmap.

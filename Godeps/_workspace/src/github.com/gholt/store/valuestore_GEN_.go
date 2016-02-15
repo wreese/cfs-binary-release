@@ -16,23 +16,23 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gholt/brimio"
+	"github.com/gholt/flog"
 	"github.com/gholt/locmap"
 	"github.com/gholt/ring"
 	"github.com/spaolacci/murmur3"
-	"gopkg.in/gholt/brimutil.v1"
 )
 
-// DefaultValueStore instances are created with NewValueStore.
-type DefaultValueStore struct {
+// defaultValueStore instances are created with NewValueStore.
+type defaultValueStore struct {
 	runningLock sync.Mutex
 	// 0 = not running, 1 = running, 2 = can't run due to previous error
 	running int
 
-	logCritical             LogFunc
-	logError                LogFunc
-	logWarning              LogFunc
-	logInfo                 LogFunc
-	logDebug                LogFunc
+	logCritical             func(string, ...interface{})
+	logError                func(string, ...interface{})
+	logDebug                func(string, ...interface{})
+	logDebugOn              bool
 	randMutex               sync.Mutex
 	rand                    *rand.Rand
 	freeableMemBlockChans   []chan *valueMemBlock
@@ -155,35 +155,34 @@ type valueLocBlock interface {
 	close() error
 }
 
-// NewValueStore creates a DefaultValueStore for use in storing []byte values
+// NewValueStore creates a ValueStore for use in storing []byte values
 // referenced by 128 bit keys; the store, restart channel (chan error), or any
 // error during construction is returned.
 //
-// The restart channel should be read from continually during the life of the
-// store and, upon any error from the channel, the store should be discarded
-// and a new one created in its place. This restart procedure is needed when
-// data on disk is detected as corrupted and cannot be easily recovered from; a
-// restart will cause only good entries to be loaded therefore discarding any
-// bad entries due to the corruption. A restart may also be requested if the
-// store reaches an unrecoverable state, such as no longer being able to open
-// new files.
+// The restart channel (chan error) should be read from continually during the
+// life of the store and, upon any error from the channel, the store should be
+// restarted with Shutdown() and Startup(). This restart procedure is needed
+// when data on disk is detected as corrupted and cannot be easily recovered
+// from; a restart will cause only good entries to be loaded therefore
+// discarding any bad entries due to the corruption. A restart may also be
+// requested if the store reaches an unrecoverable state, such as no longer
+// being able to open new files.
 //
 // Note that a lot of buffering, multiple cores, and background processes can
 // be in use and therefore Shutdown() should be called prior to the process
 // exiting to ensure all processing is done and the buffers are flushed.
-func NewValueStore(c *ValueStoreConfig) (*DefaultValueStore, chan error) {
+func NewValueStore(c *ValueStoreConfig) (ValueStore, chan error) {
 	cfg := resolveValueStoreConfig(c)
 	lcmap := cfg.ValueLocMap
 	if lcmap == nil {
 		lcmap = locmap.NewValueLocMap(nil)
 	}
 	lcmap.SetInactiveMask(_TSB_INACTIVE)
-	store := &DefaultValueStore{
+	store := &defaultValueStore{
 		logCritical:             cfg.LogCritical,
 		logError:                cfg.LogError,
-		logWarning:              cfg.LogWarning,
-		logInfo:                 cfg.LogInfo,
 		logDebug:                cfg.LogDebug,
+		logDebugOn:              cfg.LogDebug != nil,
 		rand:                    cfg.Rand,
 		path:                    cfg.Path,
 		pathtoc:                 cfg.PathTOC,
@@ -209,6 +208,15 @@ func NewValueStore(c *ValueStoreConfig) (*DefaultValueStore, chan error) {
 		rename:                  cfg.Rename,
 		isNotExist:              cfg.IsNotExist,
 	}
+	if store.logCritical == nil {
+		store.logCritical = flog.Default.CriticalPrintf
+	}
+	if store.logError == nil {
+		store.logError = flog.Default.ErrorPrintf
+	}
+	if store.logDebug == nil {
+		store.logDebug = func(string, ...interface{}) {}
+	}
 	store.tombstoneDiscardConfig(cfg)
 	store.compactionConfig(cfg)
 	store.auditConfig(cfg)
@@ -221,39 +229,11 @@ func NewValueStore(c *ValueStoreConfig) (*DefaultValueStore, chan error) {
 	return store, store.restartChan
 }
 
-func (store *DefaultValueStore) ValueCap() uint32 {
+func (store *defaultValueStore) ValueCap() uint32 {
 	return store.valueCap
 }
 
-func (store *DefaultValueStore) disableAll() {
-	store.disableAllBackground()
-	store.DisableWrites()
-}
-
-func (store *DefaultValueStore) disableAllBackground() {
-	wg := &sync.WaitGroup{}
-	for i, f := range []func(){
-		store.DisableDiskWatcher,
-		store.DisableFlusher,
-		store.DisableAudit,
-		store.DisableCompaction,
-		store.DisableInPullReplication,
-		store.DisableOutPullReplication,
-		store.DisableOutPushReplication,
-		store.DisableInBulkSet,
-		store.DisableInBulkSetAck,
-		store.DisableTombstoneDiscard,
-	} {
-		wg.Add(1)
-		go func(ii int, ff func()) {
-			ff()
-			wg.Done()
-		}(i, f)
-	}
-	wg.Wait()
-}
-
-func (store *DefaultValueStore) Startup() error {
+func (store *defaultValueStore) Startup() error {
 	store.runningLock.Lock()
 	switch store.running {
 	case 0: // not running
@@ -323,19 +303,57 @@ func (store *DefaultValueStore) Startup() error {
 		store.runningLock.Unlock()
 		return err
 	}
-	store.enableAll()
+	wg := &sync.WaitGroup{}
+	for i, f := range []func(){
+		store.auditStartup,
+		store.bulkSetStartup,
+		store.bulkSetAckStartup,
+		store.compactionStartup,
+		store.diskWatcherStartup,
+		store.flusherStartup,
+		store.pullReplicationStartup,
+		store.pushReplicationStartup,
+		store.tombstoneDiscardStartup,
+	} {
+		wg.Add(1)
+		go func(ii int, ff func()) {
+			ff()
+			wg.Done()
+		}(i, f)
+	}
+	wg.Wait()
+	store.EnableWrites()
 	store.running = 1 // running
 	store.runningLock.Unlock()
 	return nil
 }
 
-func (store *DefaultValueStore) Shutdown() {
+func (store *defaultValueStore) Shutdown() {
 	store.runningLock.Lock()
 	if store.running != 1 { // running
 		store.runningLock.Unlock()
 		return
 	}
-	store.disableAll()
+	wg := &sync.WaitGroup{}
+	for i, f := range []func(){
+		store.auditShutdown,
+		store.bulkSetShutdown,
+		store.bulkSetAckShutdown,
+		store.compactionShutdown,
+		store.diskWatcherShutdown,
+		store.flusherShutdown,
+		store.pullReplicationShutdown,
+		store.pushReplicationShutdown,
+		store.tombstoneDiscardShutdown,
+	} {
+		wg.Add(1)
+		go func(ii int, ff func()) {
+			ff()
+			wg.Done()
+		}(i, f)
+	}
+	wg.Wait()
+	store.DisableWrites()
 	for _, c := range store.pendingWriteReqChans {
 		c <- shutdownValueWriteReq
 	}
@@ -355,50 +373,11 @@ func (store *DefaultValueStore) Shutdown() {
 	store.runningLock.Unlock()
 }
 
-func (store *DefaultValueStore) enableAll() {
-	wg := &sync.WaitGroup{}
-	for _, f := range []func(){
-		store.EnableWrites,
-		store.EnableTombstoneDiscard,
-		store.EnableInBulkSetAck,
-		store.EnableInBulkSet,
-		store.EnableOutPushReplication,
-		store.EnableOutPullReplication,
-		store.EnableInPullReplication,
-		store.EnableCompaction,
-		store.EnableAudit,
-		store.EnableFlusher,
-		store.EnableDiskWatcher,
-	} {
-		wg.Add(1)
-		go func(ff func()) {
-			ff()
-			wg.Done()
-		}(f)
-	}
-	wg.Wait()
-}
-
-func (store *DefaultValueStore) DisableWrites() {
-	store.disableWrites(true)
-}
-
-func (store *DefaultValueStore) disableWrites(userCall bool) {
-	store.disableEnableWritesLock.Lock()
-	if userCall {
-		store.userDisabled = true
-	}
-	for _, c := range store.pendingWriteReqChans {
-		c <- disableValueWriteReq
-	}
-	store.disableEnableWritesLock.Unlock()
-}
-
-func (store *DefaultValueStore) EnableWrites() {
+func (store *defaultValueStore) EnableWrites() {
 	store.enableWrites(true)
 }
 
-func (store *DefaultValueStore) enableWrites(userCall bool) {
+func (store *defaultValueStore) enableWrites(userCall bool) {
 	store.disableEnableWritesLock.Lock()
 	if userCall || !store.userDisabled {
 		store.userDisabled = false
@@ -409,14 +388,28 @@ func (store *DefaultValueStore) enableWrites(userCall bool) {
 	store.disableEnableWritesLock.Unlock()
 }
 
-func (store *DefaultValueStore) Flush() {
+func (store *defaultValueStore) DisableWrites() {
+	store.disableWrites(true)
+}
+
+func (store *defaultValueStore) disableWrites(userCall bool) {
+	store.disableEnableWritesLock.Lock()
+	if userCall {
+		store.userDisabled = true
+	}
+	for _, c := range store.pendingWriteReqChans {
+		c <- disableValueWriteReq
+	}
+	store.disableEnableWritesLock.Unlock()
+}
+func (store *defaultValueStore) Flush() {
 	for _, c := range store.pendingWriteReqChans {
 		c <- flushValueWriteReq
 	}
 	<-store.flushedChan
 }
 
-func (store *DefaultValueStore) Lookup(keyA uint64, keyB uint64) (int64, uint32, error) {
+func (store *defaultValueStore) Lookup(keyA uint64, keyB uint64) (int64, uint32, error) {
 	atomic.AddInt32(&store.lookups, 1)
 	timestampbits, _, length, err := store.lookup(keyA, keyB)
 	if err != nil {
@@ -425,7 +418,7 @@ func (store *DefaultValueStore) Lookup(keyA uint64, keyB uint64) (int64, uint32,
 	return int64(timestampbits >> _TSB_UTIL_BITS), length, err
 }
 
-func (store *DefaultValueStore) lookup(keyA uint64, keyB uint64) (uint64, uint32, uint32, error) {
+func (store *defaultValueStore) lookup(keyA uint64, keyB uint64) (uint64, uint32, uint32, error) {
 	timestampbits, id, _, length := store.locmap.Get(keyA, keyB)
 	if id == 0 || timestampbits&_TSB_DELETION != 0 {
 		return timestampbits, id, 0, ErrNotFound
@@ -433,7 +426,7 @@ func (store *DefaultValueStore) lookup(keyA uint64, keyB uint64) (uint64, uint32
 	return timestampbits, id, length, nil
 }
 
-func (store *DefaultValueStore) Read(keyA uint64, keyB uint64, value []byte) (int64, []byte, error) {
+func (store *defaultValueStore) Read(keyA uint64, keyB uint64, value []byte) (int64, []byte, error) {
 	atomic.AddInt32(&store.reads, 1)
 	timestampbits, value, err := store.read(keyA, keyB, value)
 	if err != nil {
@@ -442,7 +435,7 @@ func (store *DefaultValueStore) Read(keyA uint64, keyB uint64, value []byte) (in
 	return int64(timestampbits >> _TSB_UTIL_BITS), value, err
 }
 
-func (store *DefaultValueStore) read(keyA uint64, keyB uint64, value []byte) (uint64, []byte, error) {
+func (store *defaultValueStore) read(keyA uint64, keyB uint64, value []byte) (uint64, []byte, error) {
 	timestampbits, id, offset, length := store.locmap.Get(keyA, keyB)
 	if id == 0 || timestampbits&_TSB_DELETION != 0 || timestampbits&_TSB_LOCAL_REMOVAL != 0 {
 		return timestampbits, value, ErrNotFound
@@ -450,7 +443,7 @@ func (store *DefaultValueStore) read(keyA uint64, keyB uint64, value []byte) (ui
 	return store.locBlock(id).read(keyA, keyB, timestampbits, offset, length, value)
 }
 
-func (store *DefaultValueStore) Write(keyA uint64, keyB uint64, timestampmicro int64, value []byte) (int64, error) {
+func (store *defaultValueStore) Write(keyA uint64, keyB uint64, timestampmicro int64, value []byte) (int64, error) {
 	atomic.AddInt32(&store.writes, 1)
 	if timestampmicro < TIMESTAMPMICRO_MIN {
 		atomic.AddInt32(&store.writeErrors, 1)
@@ -469,7 +462,7 @@ func (store *DefaultValueStore) Write(keyA uint64, keyB uint64, timestampmicro i
 	return int64(timestampbits >> _TSB_UTIL_BITS), err
 }
 
-func (store *DefaultValueStore) write(keyA uint64, keyB uint64, timestampbits uint64, value []byte, internal bool) (uint64, error) {
+func (store *defaultValueStore) write(keyA uint64, keyB uint64, timestampbits uint64, value []byte, internal bool) (uint64, error) {
 	i := int(keyA>>1) % len(store.freeWriteReqChans)
 	writeReq := <-store.freeWriteReqChans[i]
 	writeReq.keyA = keyA
@@ -490,7 +483,7 @@ func (store *DefaultValueStore) write(keyA uint64, keyB uint64, timestampbits ui
 	return ptimestampbits, err
 }
 
-func (store *DefaultValueStore) Delete(keyA uint64, keyB uint64, timestampmicro int64) (int64, error) {
+func (store *defaultValueStore) Delete(keyA uint64, keyB uint64, timestampmicro int64) (int64, error) {
 	atomic.AddInt32(&store.deletes, 1)
 	if timestampmicro < TIMESTAMPMICRO_MIN {
 		atomic.AddInt32(&store.deleteErrors, 1)
@@ -509,11 +502,11 @@ func (store *DefaultValueStore) Delete(keyA uint64, keyB uint64, timestampmicro 
 	return int64(ptimestampbits >> _TSB_UTIL_BITS), err
 }
 
-func (store *DefaultValueStore) locBlock(locBlockID uint32) valueLocBlock {
+func (store *defaultValueStore) locBlock(locBlockID uint32) valueLocBlock {
 	return store.locBlocks[locBlockID]
 }
 
-func (store *DefaultValueStore) addLocBlock(block valueLocBlock) (uint32, error) {
+func (store *defaultValueStore) addLocBlock(block valueLocBlock) (uint32, error) {
 	id := atomic.AddUint64(&store.locBlockIDer, 1)
 	// TODO: We should probably issue a restart request if
 	// id >= math.MaxUint32 / 2 since it's almost certainly not the case that
@@ -528,7 +521,7 @@ func (store *DefaultValueStore) addLocBlock(block valueLocBlock) (uint32, error)
 	return uint32(id), nil
 }
 
-func (store *DefaultValueStore) locBlockIDFromTimestampnano(tsn int64) uint32 {
+func (store *defaultValueStore) locBlockIDFromTimestampnano(tsn int64) uint32 {
 	for i := 1; i <= len(store.locBlocks); i++ {
 		if store.locBlocks[i] == nil {
 			return 0
@@ -541,11 +534,11 @@ func (store *DefaultValueStore) locBlockIDFromTimestampnano(tsn int64) uint32 {
 	return 0
 }
 
-func (store *DefaultValueStore) closeLocBlock(locBlockID uint32) error {
+func (store *defaultValueStore) closeLocBlock(locBlockID uint32) error {
 	return store.locBlocks[locBlockID].close()
 }
 
-func (store *DefaultValueStore) memClearer(freeableMemBlockChan chan *valueMemBlock) {
+func (store *defaultValueStore) memClearer(freeableMemBlockChan chan *valueMemBlock) {
 	var tb *valueTOCBlock
 	var tbTS int64
 	var tbOffset int
@@ -619,7 +612,7 @@ func (store *DefaultValueStore) memClearer(freeableMemBlockChan chan *valueMemBl
 	}
 }
 
-func (store *DefaultValueStore) memWriter(pendingWriteReqChan chan *valueWriteReq) {
+func (store *defaultValueStore) memWriter(pendingWriteReqChan chan *valueWriteReq) {
 	var enabled bool
 	var memBlock *valueMemBlock
 	var memBlockTOCOffset int
@@ -699,7 +692,7 @@ func (store *DefaultValueStore) memWriter(pendingWriteReqChan chan *valueWriteRe
 	}
 }
 
-func (store *DefaultValueStore) fileWriter() {
+func (store *defaultValueStore) fileWriter() {
 	var fl *valueStoreFile
 	memWritersFlushLeft := len(store.pendingWriteReqChans)
 	memWritersShutdownLeft := len(store.pendingWriteReqChans)
@@ -766,7 +759,7 @@ func (store *DefaultValueStore) fileWriter() {
 		}
 		if fl == nil {
 			var err error
-			fl, err = createValueReadWriteFile(store, store.createWriteCloser, store.openReadSeeker)
+			fl, err = store.createValueReadWriteFile()
 			if err != nil {
 				store.logCritical("fileWriter: must shutdown because no new files can be opened: %s", err)
 				disabledDueToError = err
@@ -785,7 +778,7 @@ func (store *DefaultValueStore) fileWriter() {
 	}
 }
 
-func (store *DefaultValueStore) tocWriter() {
+func (store *defaultValueStore) tocWriter() {
 	memClearersFlushLeft := len(store.freeableMemBlockChans)
 	memClearersShutdownLeft := len(store.freeableMemBlockChans)
 	// writerA is the current toc file while writerB is the previously active
@@ -905,7 +898,7 @@ OuterLoop:
 					fatal(9, err)
 					continue OuterLoop
 				}
-				writerA = brimutil.NewMultiCoreChecksummedWriter(fp, int(store.checksumInterval), murmur3.New32, store.workers)
+				writerA = brimio.NewMultiCoreChecksummedWriter(fp, int(store.checksumInterval), murmur3.New32, store.workers)
 				if _, err = writerA.Write(head); err != nil {
 					fatal(10, err)
 					continue OuterLoop
@@ -927,7 +920,7 @@ OuterLoop:
 	}
 }
 
-func (store *DefaultValueStore) recovery() error {
+func (store *defaultValueStore) recovery() error {
 	start := time.Now()
 	causedChangeCount := int64(0)
 	workers := uint64(store.workers)
@@ -954,7 +947,7 @@ func (store *DefaultValueStore) recovery() error {
 					if wr.TimestampBits&_TSB_LOCAL_REMOVAL != 0 {
 						wr.BlockID = 0
 					}
-					if store.logDebug != nil {
+					if store.logDebugOn {
 						if store.locmap.Set(wr.KeyA, wr.KeyB, wr.TimestampBits, wr.BlockID, wr.Offset, wr.Length, true) < wr.TimestampBits {
 							atomic.AddInt64(&causedChangeCount, 1)
 						}
@@ -1000,7 +993,7 @@ func (store *DefaultValueStore) recovery() error {
 			store.logError("recovery: error opening %s: %s", names[i], err)
 			continue
 		}
-		fl, err := newValueReadFile(store, namets, store.openReadSeeker)
+		fl, err := store.newValueReadFile(namets)
 		if err != nil {
 			store.logError("recovery: error opening %s: %s", names[i][:len(names[i])-3], err)
 			closeIfCloser(fpr)
@@ -1020,21 +1013,17 @@ func (store *DefaultValueStore) recovery() error {
 		closeIfCloser(fpr)
 	}
 	spindown()
-	if store.logDebug != nil {
+	if store.logDebugOn {
 		dur := time.Now().Sub(start)
 		stats := store.Stats(false).(*ValueStoreStats)
 		store.logDebug("recovery: %d key locations loaded in %s, %.0f/s; %d caused change; %d resulting locations referencing %d bytes.", fromDiskCount, dur, float64(fromDiskCount)/(float64(dur)/float64(time.Second)), causedChangeCount, stats.Values, stats.ValueBytes)
 	}
 	if len(compactNames) > 0 {
-		if store.logDebug != nil {
-			store.logDebug("recovery: secondary recovery started for %d files.", len(compactNames))
-		}
+		store.logDebug("recovery: secondary recovery started for %d files.", len(compactNames))
 		for i, name := range compactNames {
 			store.compactFile(name, compactBlockIDs[i], make(chan struct{}))
 		}
-		if store.logDebug != nil {
-			store.logDebug("recovery: secondary recovery completed.")
-		}
+		store.logDebug("recovery: secondary recovery completed.")
 	}
 	return nil
 }

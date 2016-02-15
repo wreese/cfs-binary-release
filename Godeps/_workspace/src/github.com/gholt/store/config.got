@@ -2,7 +2,6 @@ package store
 
 import (
     "io"
-    "log"
     "math"
     "math/rand"
     "os"
@@ -22,21 +21,17 @@ const _{{.TT}}_PAGE_SIZE_MIN = 8+_{{.TT}}_FILE_ENTRY_SIZE
 // structure will have no effect on existing {{.T}}Stores; but deep changes
 // (such as reconfiguring an existing Logger) will.
 type {{.T}}StoreConfig struct {
-    // LogCritical sets the func to use for critical messages. Defaults logging
-    // to os.Stderr.
-    LogCritical LogFunc
-    // LogError sets the func to use for error messages. Defaults logging to
-    // os.Stderr.
-    LogError LogFunc
-    // LogWarning sets the func to use for warning messages. Defaults logging
-    // to os.Stderr.
-    LogWarning LogFunc
-    // LogInfo sets the func to use for info messages. Defaults logging to
-    // os.Stdout.
-    LogInfo LogFunc
+    // LogCritical sets the func to use for critical messages; these are
+    // messages about issues that render the store inoperative. Defaults
+    // logging to os.Stderr.
+    LogCritical func(fmt string, args ...interface{})
+    // LogError sets the func to use for error messages; these are messages
+    // about errors the store cannot correct or workaround on its own. Defaults
+    // logging to os.Stderr.
+    LogError func(fmt string, args ...interface{})
     // LogDebug sets the func to use for debug messages. Defaults not logging
     // debug messages.
-    LogDebug LogFunc
+    LogDebug func(fmt string, args ...interface{})
     // Rand sets the rand.Rand to use as a random data source. Defaults to a
     // new randomizer based on the current time.
     Rand *rand.Rand
@@ -71,7 +66,6 @@ type {{.T}}StoreConfig struct {
     // PageSize controls the size of each chunk of memory allocated. Defaults
     // to 4,194,304 bytes.
     PageSize      int
-    minValueAlloc int
     // WritePagesPerWorker controls how many pages are created per worker for
     // caching recently written values. Defaults to 3.
     WritePagesPerWorker int
@@ -147,26 +141,22 @@ type {{.T}}StoreConfig struct {
     // an outgoing response message to an incoming pull replication message can
     // be pending before just discarding it. Defaults to MsgTimeout.
     InPullReplicationResponseMsgTimeout int
-    // OutPushReplicationInterval overrides the BackgroundInterval value just
-    // for outgoing push replication passes.
-    OutPushReplicationInterval int
-    // OutPushReplicationWorkers indicates how many goroutines may be used for
+    // PushReplicationInterval overrides the BackgroundInterval value just for
+    // outgoing push replication passes.
+    PushReplicationInterval int
+    // PushReplicationWorkers indicates how many goroutines may be used for
     // an outgoing push replication pass. Defaults to Workers.
-    OutPushReplicationWorkers int
-    // OutPushReplicationMsgs indicates how many outgoing push-replication
-    // messages can be buffered before blocking on creating more. Defaults to
-    // OutPushReplicationWorkers * 4.
-    OutPushReplicationMsgs int
-    // OutPushReplicationMsgTimeout indicates the maximum milliseconds an
+    PushReplicationWorkers int
+    // PushReplicationMsgTimeout indicates the maximum milliseconds an
     // outgoing push replication message can be pending before just discarding
     // it. Defaults to MsgTimeout.
-    OutPushReplicationMsgTimeout int
+    PushReplicationMsgTimeout int
     // BulkSetMsgCap indicates the maximum bytes for bulk-set messages.
     // Defaults to MsgCap.
     BulkSetMsgCap int
     // OutBulkSetMsgs indicates how many outgoing bulk-set messages can be
     // buffered before blocking on creating more. Defaults to
-    // OutPushReplicationWorkers * 4.
+    // PushReplicationWorkers * 4.
     OutBulkSetMsgs int
     // InBulkSetWorkers indicates how many incoming bulk-set messages can be
     // processed at the same time. Defaults to Workers.
@@ -210,7 +200,7 @@ type {{.T}}StoreConfig struct {
     // TOCPath device falls below this threshold, writes will be automatically
     // disabled.
     // 0 will use the default; 1 will disable the check.
-    // Default: 8,589,934,592 (8G)
+    // default: 8,589,934,592 (8G)
     FreeDisableThreshold uint64
     // FreeReenableThreshold controls when to automatically re-enable writes;
     // the number is in bytes. If writes are automatically disabled and the
@@ -218,21 +208,21 @@ type {{.T}}StoreConfig struct {
     // this threshold, writes will be automatically re-enabled. A negative
     // value will turn off this check.
     // 0 will use the default; 1 will disable the check.
-    // Default: 17,179,869,184 (16G)
+    // default: 17,179,869,184 (16G)
     FreeReenableThreshold uint64
     // UsageDisableThreshold controls when to automatically disable writes; the
     // number is a percentage (1 == 100%). If the percentage used on either the
     // Path or TOCPath device grows above this threshold, writes will be
     // automatically disabled.
     // 0 will use the default; a negative value will disable the check.
-    // Default: 95%
+    // default: 95%
     UsageDisableThreshold float32
     // UsageReenableThreshold controls when to automatically re-enable writes;
     // the number is a percentage (1 == 100%). If writes are automatically
     // disabled and the percentage used on each of the Path or TOCPath devices
     // falls below this threshold, writes will be automatically re-enabled.
     // 0 will use the default; a negative value will disable the check.
-    // Default: 90%
+    // default: 90%
     UsageReenableThreshold float32
     // FlusherThreshold sets the number of to-disk modifications controlling
     // the once-a-minute automatic flusher. If there are less than this
@@ -242,7 +232,7 @@ type {{.T}}StoreConfig struct {
     // penalizing active stores that will already be sending recent
     // modifications to disk as ever more recent modifications occur.
     // 0 will use the default; a negative value will disable the check.
-    // Default is the number of entries that are guaranteed to fill a memory
+    // default is the number of entries that are guaranteed to fill a memory
     // page; this depends on the PageSize value and the internal struct size
     // for the store.
     FlusherThreshold int32
@@ -261,6 +251,8 @@ type {{.T}}StoreConfig struct {
     Remove func(fullPath string) error
     Rename func(oldFullPath string, newFullPath string) error
     IsNotExist func(err error) bool
+
+    minValueAlloc int
 }
 
 func resolve{{.T}}StoreConfig(c *{{.T}}StoreConfig) *{{.T}}StoreConfig {
@@ -268,19 +260,6 @@ func resolve{{.T}}StoreConfig(c *{{.T}}StoreConfig) *{{.T}}StoreConfig {
     if c != nil {
         *cfg = *c
     }
-    if cfg.LogCritical == nil {
-        cfg.LogCritical = log.New(os.Stderr, "{{.T}}Store ", log.LstdFlags).Printf
-    }
-    if cfg.LogError == nil {
-        cfg.LogError = log.New(os.Stderr, "{{.T}}Store ", log.LstdFlags).Printf
-    }
-    if cfg.LogWarning == nil {
-        cfg.LogWarning = log.New(os.Stderr, "{{.T}}Store ", log.LstdFlags).Printf
-    }
-    if cfg.LogInfo == nil {
-        cfg.LogInfo = log.New(os.Stdout, "{{.T}}Store ", log.LstdFlags).Printf
-    }
-    // LogDebug set as nil is fine and shortcircuits any debug code.
     if cfg.Rand == nil {
         cfg.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
     }
@@ -583,49 +562,38 @@ func resolve{{.T}}StoreConfig(c *{{.T}}StoreConfig) *{{.T}}StoreConfig {
     if cfg.InPullReplicationResponseMsgTimeout < 1 {
         cfg.InPullReplicationResponseMsgTimeout = 100
     }
-    if env := os.Getenv("{{.TT}}STORE_OUT_PUSH_REPLICATION_INTERVAL"); env != "" {
+    if env := os.Getenv("{{.TT}}STORE_PUSH_REPLICATION_INTERVAL"); env != "" {
         if val, err := strconv.Atoi(env); err == nil {
-            cfg.OutPushReplicationInterval = val
+            cfg.PushReplicationInterval = val
         }
     }
-    if cfg.OutPushReplicationInterval == 0 {
-        cfg.OutPushReplicationInterval = cfg.BackgroundInterval
+    if cfg.PushReplicationInterval == 0 {
+        cfg.PushReplicationInterval = cfg.BackgroundInterval
     }
-    if cfg.OutPushReplicationInterval < 1 {
-        cfg.OutPushReplicationInterval = 1
+    if cfg.PushReplicationInterval < 1 {
+        cfg.PushReplicationInterval = 1
     }
-    if env := os.Getenv("{{.TT}}STORE_OUT_PUSH_REPLICATION_WORKERS"); env != "" {
+    if env := os.Getenv("{{.TT}}STORE_PUSH_REPLICATION_WORKERS"); env != "" {
         if val, err := strconv.Atoi(env); err == nil {
-            cfg.OutPushReplicationWorkers = val
+            cfg.PushReplicationWorkers = val
         }
     }
-    if cfg.OutPushReplicationWorkers == 0 {
-        cfg.OutPushReplicationWorkers = cfg.Workers
+    if cfg.PushReplicationWorkers == 0 {
+        cfg.PushReplicationWorkers = cfg.Workers
     }
-    if cfg.OutPushReplicationWorkers < 1 {
-        cfg.OutPushReplicationWorkers = 1
+    if cfg.PushReplicationWorkers < 1 {
+        cfg.PushReplicationWorkers = 1
     }
-    if env := os.Getenv("{{.TT}}STORE_OUT_PUSH_REPLICATION_MSGS"); env != "" {
+    if env := os.Getenv("{{.TT}}STORE_PUSH_REPLICATION_MSG_TIMEOUT"); env != "" {
         if val, err := strconv.Atoi(env); err == nil {
-            cfg.OutPushReplicationMsgs = val
+            cfg.PushReplicationMsgTimeout = val
         }
     }
-    if cfg.OutPushReplicationMsgs == 0 {
-        cfg.OutPushReplicationMsgs = cfg.OutPushReplicationWorkers * 4
+    if cfg.PushReplicationMsgTimeout == 0 {
+        cfg.PushReplicationMsgTimeout = cfg.MsgTimeout
     }
-    if cfg.OutPushReplicationMsgs < 1 {
-        cfg.OutPushReplicationMsgs = 1
-    }
-    if env := os.Getenv("{{.TT}}STORE_OUT_PUSH_REPLICATION_MSG_TIMEOUT"); env != "" {
-        if val, err := strconv.Atoi(env); err == nil {
-            cfg.OutPushReplicationMsgTimeout = val
-        }
-    }
-    if cfg.OutPushReplicationMsgTimeout == 0 {
-        cfg.OutPushReplicationMsgTimeout = cfg.MsgTimeout
-    }
-    if cfg.OutPushReplicationMsgTimeout < 1 {
-        cfg.OutPushReplicationMsgTimeout = 100
+    if cfg.PushReplicationMsgTimeout < 1 {
+        cfg.PushReplicationMsgTimeout = 100
     }
     if env := os.Getenv("{{.TT}}STORE_BULK_SET_MSG_CAP"); env != "" {
         if val, err := strconv.Atoi(env); err == nil {
@@ -644,7 +612,7 @@ func resolve{{.T}}StoreConfig(c *{{.T}}StoreConfig) *{{.T}}StoreConfig {
         }
     }
     if cfg.OutBulkSetMsgs == 0 {
-        cfg.OutBulkSetMsgs = cfg.OutPushReplicationWorkers * 4
+        cfg.OutBulkSetMsgs = cfg.PushReplicationWorkers * 4
     }
     if cfg.OutBulkSetMsgs < 1 {
         cfg.OutBulkSetMsgs = 1

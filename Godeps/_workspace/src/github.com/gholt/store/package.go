@@ -176,8 +176,6 @@ func osCreateWriteCloser(fullPath string) (io.WriteCloser, error) {
 	return os.Create(fullPath)
 }
 
-type LogFunc func(format string, v ...interface{})
-
 type bgNotificationAction int
 
 const (
@@ -190,11 +188,8 @@ type bgNotification struct {
 	doneChan chan struct{}
 }
 
-// Store is an interface for a disk-backed data structure that stores
-// []byte values referenced by keys with options for replication.
-//
-// For documentation on each of these functions, see the DefaultValueStore and
-// DefaultGroupStore.
+// Store is an interface shared by ValueStore and GroupStore containing basic
+// command and control functions.
 type Store interface {
 	// Startup will start up everything needed to start using the Store or
 	// return an error; on creation, a Store will not yet be started up.
@@ -202,28 +197,34 @@ type Store interface {
 	// Shutdown will ensure buffered data is written to disk and will shutdown
 	// the Store; the Store will be unusable until Startup is called again.
 	Shutdown()
-	// Flush will ensure buffered data, at the time of the call, is written to
-	// disk.
-	Flush()
+	// EnableWrites will switch the Store to read-write mode, assuming the
+	// Store supports writes; this is the default mode of most stores after
+	// Startup, but it doesn't hurt to call it anyway to be sure.
+	EnableWrites()
 	// DisableWrites will switch the Store to a read-only mode until
 	// EnableWrites is called.
 	DisableWrites()
-	// EnableWrites will switch the Store back to read-write mode, assuming the
-	// Store supports writes.
-	EnableWrites()
+	// Flush will ensure buffered data, at the time of the call, is written to
+	// disk.
+	Flush()
+	// AuditPass will immediately execute a pass at full speed to check the
+	// on-disk data for errors rather than waiting for the next interval to run
+	// the standard slow-audit pass. If a pass is currently executing, it will
+	// be stopped and restarted so that a call to this function ensures one
+	// complete pass occurs.
+	AuditPass()
 	// Stats returns overall information about the state of the Store. Note
 	// that this can be an expensive call; debug = true will make it even more
 	// expensive.
 	//
 	// Note that this function returns a fmt.Stringer because other
 	// implementations of a Store shouldn't be tied to this package's
-	// implementation. But, if it's known that DefaultValueStore is in use, for
-	// example, a quick cast to *ValueStoreStats can be done to gain access to
-	// individual fields.
+	// implementation. But, a quick casting attempt to *ValueStoreStats can be
+	// done to gain access to individual fields.
 	//
 	// For this package's implementation, the public counter fields returned in
 	// the stats will reset with each read. In other words, if stats.WriteCount
-	// gives the value 10 and no more writes occur before Stats() is called
+	// has the value 10 and no more writes occur before Stats() is called
 	// again, that second stats.WriteCount will have the value 0.
 	//
 	// The various values reported when debug=true are left undocumented
@@ -236,8 +237,6 @@ type Store interface {
 
 // ValueStore is an interface for a disk-backed data structure that stores
 // []byte values referenced by 128 bit keys with options for replication.
-//
-// For documentation on each of these functions, see the DefaultValueStore.
 type ValueStore interface {
 	Store
 	// Lookup will return (timestampmicro, length, err) for (keyA, keyB).
@@ -248,8 +247,9 @@ type ValueStore interface {
 	// marker (aka tombstone).
 	Lookup(keyA uint64, keyB uint64) (int64, uint32, error)
 	// Read will return (timestampmicro, value, err) for (keyA, keyB); if an
-	// incoming value is provided, the value read will be appended to it and
-	// the whole returned (useful to reuse an existing []byte).
+	// incoming value is provided, any value read from the store will be
+	// appended to it and the whole returned (useful to reuse an existing
+	// []byte).
 	//
 	// Note that err == ErrNotFound with timestampmicro == 0 indicates (keyA,
 	// keyB) was not known at all whereas err == ErrNotFound with
@@ -269,16 +269,22 @@ type ValueStore interface {
 	Delete(keyA uint64, keyB uint64, timestampmicro int64) (int64, error)
 }
 
+// LookupGroupItem is returned by the GroupStore.LookupGroup call.
+type LookupGroupItem struct {
+	NameKeyA       uint64
+	NameKeyB       uint64
+	TimestampMicro int64
+	Length         uint32
+}
+
 // GroupStore is an interface for a disk-backed data structure that stores
 // []byte values referenced by 128 bit key pairs with options for replication.
 // Because this package uses templatized code, the nomenclature is a bit odd.
 // (keyA, keyB) represents parent key pairs and (nameKeyA, nameKeyB) represents
-// child key pairs. Values are stored by both pairs (keyA, keyB, nameKeyA,
-// nameKeyB) and can be retrieved individually by the same. A full set of
-// children (nameKeyA, nameKeyB) pairs can be retrieved for a parent (keyA,
-// keyB) pair.
-//
-// For documentation on each of these functions, see the DefaultGroupStore.
+// child key pairs. Values are stored by the combination of both pairs (keyA,
+// keyB, nameKeyA, nameKeyB) and can be retrieved individually by the same. A
+// full set of children (nameKeyA, nameKeyB) pairs can be retrieved for a
+// parent (keyA, keyB) pair.
 type GroupStore interface {
 	Store
 	// Lookup will return (timestampmicro, length, err) for (keyA, keyB,
@@ -289,13 +295,13 @@ type GroupStore interface {
 	// ErrNotFound with timestampmicro != 0 indicates (keyA, keyB, nameKeyA,
 	// nameKeyB) was known and had a deletion marker (aka tombstone).
 	Lookup(keyA uint64, keyB uint64, nameKeyA uint64, nameKeyB uint64) (int64, uint32, error)
-	// LookupGroup returns all the (nameKeyA, nameKeyB, timestampMicro) items
-	// matching under (keyA, keyB).
+	// LookupGroup returns all the (nameKeyA, nameKeyB, timestampMicro, length)
+	// items matching under (keyA, keyB).
 	LookupGroup(keyA uint64, keyB uint64) []LookupGroupItem
 	// Read will return (timestampmicro, value, err) for (keyA, keyB, nameKeyA,
-	// nameKeyB); if an incoming value is provided, the value read will be
-	// appended to it and the whole returned (useful to reuse an existing
-	// []byte).
+	// nameKeyB); if an incoming value is provided, any value read from the
+	// store will be appended to it and the whole returned (useful to reuse an
+	// existing []byte).
 	//
 	// Note that err == ErrNotFound with timestampmicro == 0 indicates (keyA,
 	// keyB, nameKeyA, nameKeyB) was not known at all whereas err ==

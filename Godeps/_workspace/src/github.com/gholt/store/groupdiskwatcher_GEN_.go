@@ -20,11 +20,12 @@ type groupDiskWatcherState struct {
 	freetoc                uint64
 	usedtoc                uint64
 	sizetoc                uint64
-	notifyChanLock         sync.Mutex
-	notifyChan             chan *bgNotification
+
+	startupShutdownLock sync.Mutex
+	notifyChan          chan *bgNotification
 }
 
-func (store *DefaultGroupStore) diskWatcherConfig(cfg *GroupStoreConfig) {
+func (store *defaultGroupStore) diskWatcherConfig(cfg *GroupStoreConfig) {
 	store.diskWatcherState.interval = 60
 	store.diskWatcherState.freeDisableThreshold = cfg.FreeDisableThreshold
 	store.diskWatcherState.freeReenableThreshold = cfg.FreeReenableThreshold
@@ -32,17 +33,17 @@ func (store *DefaultGroupStore) diskWatcherConfig(cfg *GroupStoreConfig) {
 	store.diskWatcherState.usageReenableThreshold = cfg.UsageReenableThreshold
 }
 
-func (store *DefaultGroupStore) EnableDiskWatcher() {
-	store.diskWatcherState.notifyChanLock.Lock()
+func (store *defaultGroupStore) diskWatcherStartup() {
+	store.diskWatcherState.startupShutdownLock.Lock()
 	if store.diskWatcherState.notifyChan == nil {
 		store.diskWatcherState.notifyChan = make(chan *bgNotification, 1)
 		go store.diskWatcherLauncher(store.diskWatcherState.notifyChan)
 	}
-	store.diskWatcherState.notifyChanLock.Unlock()
+	store.diskWatcherState.startupShutdownLock.Unlock()
 }
 
-func (store *DefaultGroupStore) DisableDiskWatcher() {
-	store.diskWatcherState.notifyChanLock.Lock()
+func (store *defaultGroupStore) diskWatcherShutdown() {
+	store.diskWatcherState.startupShutdownLock.Lock()
 	if store.diskWatcherState.notifyChan != nil {
 		c := make(chan struct{}, 1)
 		store.diskWatcherState.notifyChan <- &bgNotification{
@@ -52,10 +53,10 @@ func (store *DefaultGroupStore) DisableDiskWatcher() {
 		<-c
 		store.diskWatcherState.notifyChan = nil
 	}
-	store.diskWatcherState.notifyChanLock.Unlock()
+	store.diskWatcherState.startupShutdownLock.Unlock()
 }
 
-func (store *DefaultGroupStore) diskWatcherLauncher(notifyChan chan *bgNotification) {
+func (store *defaultGroupStore) diskWatcherLauncher(notifyChan chan *bgNotification) {
 	interval := float64(store.diskWatcherState.interval) * float64(time.Second)
 	store.randMutex.Lock()
 	nextRun := time.Now().Add(time.Duration(interval + interval*store.rand.NormFloat64()*0.1))

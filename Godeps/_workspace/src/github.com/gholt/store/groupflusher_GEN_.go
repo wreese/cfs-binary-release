@@ -9,26 +9,27 @@ import (
 type groupFlusherState struct {
 	interval         int
 	flusherThreshold int32
-	notifyChanLock   sync.Mutex
-	notifyChan       chan *bgNotification
+
+	startupShutdownLock sync.Mutex
+	notifyChan          chan *bgNotification
 }
 
-func (store *DefaultGroupStore) flusherConfig(cfg *GroupStoreConfig) {
+func (store *defaultGroupStore) flusherConfig(cfg *GroupStoreConfig) {
 	store.flusherState.interval = 60
 	store.flusherState.flusherThreshold = cfg.FlusherThreshold
 }
 
-func (store *DefaultGroupStore) EnableFlusher() {
-	store.flusherState.notifyChanLock.Lock()
+func (store *defaultGroupStore) flusherStartup() {
+	store.flusherState.startupShutdownLock.Lock()
 	if store.flusherState.notifyChan == nil {
 		store.flusherState.notifyChan = make(chan *bgNotification, 1)
 		go store.flusherLauncher(store.flusherState.notifyChan)
 	}
-	store.flusherState.notifyChanLock.Unlock()
+	store.flusherState.startupShutdownLock.Unlock()
 }
 
-func (store *DefaultGroupStore) DisableFlusher() {
-	store.flusherState.notifyChanLock.Lock()
+func (store *defaultGroupStore) flusherShutdown() {
+	store.flusherState.startupShutdownLock.Lock()
 	if store.flusherState.notifyChan != nil {
 		c := make(chan struct{}, 1)
 		store.flusherState.notifyChan <- &bgNotification{
@@ -38,10 +39,10 @@ func (store *DefaultGroupStore) DisableFlusher() {
 		<-c
 		store.flusherState.notifyChan = nil
 	}
-	store.flusherState.notifyChanLock.Unlock()
+	store.flusherState.startupShutdownLock.Unlock()
 }
 
-func (store *DefaultGroupStore) flusherLauncher(notifyChan chan *bgNotification) {
+func (store *defaultGroupStore) flusherLauncher(notifyChan chan *bgNotification) {
 	interval := float64(store.flusherState.interval) * float64(time.Second)
 	store.randMutex.Lock()
 	nextRun := time.Now().Add(time.Duration(interval + interval*store.rand.NormFloat64()*0.1))
@@ -77,9 +78,7 @@ func (store *DefaultGroupStore) flusherLauncher(notifyChan chan *bgNotification)
 		m := atomic.LoadInt32(&store.modifications)
 		atomic.AddInt32(&store.modifications, -m)
 		if (m == 0 && !justFlushed) || (m > 0 && m < store.flusherState.flusherThreshold) {
-			if store.logDebug != nil {
-				store.logDebug("flusher: %d modifications under %d threshold; flushing.", m, store.flusherState.flusherThreshold)
-			}
+			store.logDebug("flusher: %d modifications under %d threshold; flushing.", m, store.flusherState.flusherThreshold)
 			store.Flush()
 			justFlushed = true
 		} else {

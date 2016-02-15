@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gholt/brimio"
 	"github.com/spaolacci/murmur3"
-	"gopkg.in/gholt/brimutil.v1"
 )
 
 //    "GROUPSTORETOC v0            ":28, checksumInterval:4
@@ -28,11 +28,11 @@ const _GROUP_FILE_ENTRY_SIZE = 48
 const _GROUP_FILE_TRAILER_SIZE = 8
 
 type groupStoreFile struct {
-	store                     *DefaultGroupStore
+	store                     *defaultGroupStore
 	fullPath                  string
 	id                        uint32
 	nameTimestamp             int64
-	readerFPs                 []brimutil.ChecksummedReader
+	readerFPs                 []brimio.ChecksummedReader
 	readerLocks               []sync.Mutex
 	readerLens                [][]byte
 	writerFP                  io.WriteCloser
@@ -52,15 +52,15 @@ type groupStoreFileWriteBuf struct {
 	memBlocks []*groupMemBlock
 }
 
-func newGroupReadFile(store *DefaultGroupStore, nameTimestamp int64, openReadSeeker func(fullPath string) (io.ReadSeeker, error)) (*groupStoreFile, error) {
+func (store *defaultGroupStore) newGroupReadFile(nameTimestamp int64) (*groupStoreFile, error) {
 	fl := &groupStoreFile{store: store, nameTimestamp: nameTimestamp}
 	fl.fullPath = path.Join(store.path, fmt.Sprintf("%019d.group", fl.nameTimestamp))
-	fl.readerFPs = make([]brimutil.ChecksummedReader, store.fileReaders)
+	fl.readerFPs = make([]brimio.ChecksummedReader, store.fileReaders)
 	fl.readerLocks = make([]sync.Mutex, len(fl.readerFPs))
 	fl.readerLens = make([][]byte, len(fl.readerFPs))
 	var checksumInterval uint32
 	for i := 0; i < len(fl.readerFPs); i++ {
-		fp, err := openReadSeeker(fl.fullPath)
+		fp, err := store.openReadSeeker(fl.fullPath)
 		if err != nil {
 			return nil, err
 		}
@@ -69,7 +69,7 @@ func newGroupReadFile(store *DefaultGroupStore, nameTimestamp int64, openReadSee
 				return nil, err
 			}
 		}
-		fl.readerFPs[i] = brimutil.NewChecksummedReader(fp, int(checksumInterval), murmur3.New32)
+		fl.readerFPs[i] = brimio.NewChecksummedReader(fp, int(checksumInterval), murmur3.New32)
 		fl.readerLens[i] = make([]byte, 4)
 	}
 	var err error
@@ -81,10 +81,10 @@ func newGroupReadFile(store *DefaultGroupStore, nameTimestamp int64, openReadSee
 	return fl, nil
 }
 
-func createGroupReadWriteFile(store *DefaultGroupStore, createWriteCloser func(fullPath string) (io.WriteCloser, error), openReadSeeker func(fullPath string) (io.ReadSeeker, error)) (*groupStoreFile, error) {
+func (store *defaultGroupStore) createGroupReadWriteFile() (*groupStoreFile, error) {
 	fl := &groupStoreFile{store: store, nameTimestamp: time.Now().UnixNano()}
 	fl.fullPath = path.Join(store.path, fmt.Sprintf("%019d.group", fl.nameTimestamp))
-	fp, err := createWriteCloser(fl.fullPath)
+	fp, err := store.createWriteCloser(fl.fullPath)
 	if err != nil {
 		return nil, err
 	}
@@ -105,11 +105,11 @@ func createGroupReadWriteFile(store *DefaultGroupStore, createWriteCloser func(f
 	for i := 0; i < store.workers; i++ {
 		go fl.writingChecksummer()
 	}
-	fl.readerFPs = make([]brimutil.ChecksummedReader, store.fileReaders)
+	fl.readerFPs = make([]brimio.ChecksummedReader, store.fileReaders)
 	fl.readerLocks = make([]sync.Mutex, len(fl.readerFPs))
 	fl.readerLens = make([][]byte, len(fl.readerFPs))
 	for i := 0; i < len(fl.readerFPs); i++ {
-		fp, err := openReadSeeker(fl.fullPath)
+		fp, err := store.openReadSeeker(fl.fullPath)
 		if err != nil {
 			fl.writerFP.Close()
 			for j := 0; j < i; j++ {
@@ -117,7 +117,7 @@ func createGroupReadWriteFile(store *DefaultGroupStore, createWriteCloser func(f
 			}
 			return nil, err
 		}
-		fl.readerFPs[i] = brimutil.NewChecksummedReader(fp, int(store.checksumInterval), murmur3.New32)
+		fl.readerFPs[i] = brimio.NewChecksummedReader(fp, int(store.checksumInterval), murmur3.New32)
 		fl.readerLens[i] = make([]byte, 4)
 	}
 	fl.id, err = store.addLocBlock(fl)
