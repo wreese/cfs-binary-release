@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gopkg.in/gholt/brimtext.v1"
+	"github.com/gholt/brimtext"
 )
 
 type GroupStoreStats struct {
@@ -111,22 +111,22 @@ type GroupStoreStats struct {
 	// the store is shutdown and restarted.
 	SmallFileCompactions int32
 	// Free is the number of bytes free on the device containing the
-	// Config.Path for the DefaultGroupStore.
+	// Config.Path for the defaultGroupStore.
 	Free uint64
 	// Used is the number of bytes used on the device containing the
-	// Config.Path for the DefaultGroupStore.
+	// Config.Path for the defaultGroupStore.
 	Used uint64
 	// Size is the size in bytes of the device containing the Config.Path for
-	// the DefaultGroupStore.
+	// the defaultGroupStore.
 	Size uint64
 	// FreeTOC is the number of bytes free on the device containing the
-	// Config.PathTOC for the DefaultGroupStore.
+	// Config.PathTOC for the defaultGroupStore.
 	FreeTOC uint64
 	// UsedTOC is the number of bytes used on the device containing the
-	// Config.PathTOC for the DefaultGroupStore.
+	// Config.PathTOC for the defaultGroupStore.
 	UsedTOC uint64
 	// SizeTOC is the size in bytes of the device containing the Config.PathTOC
-	// for the DefaultGroupStore.
+	// for the defaultGroupStore.
 	SizeTOC uint64
 
 	debug                      bool
@@ -153,8 +153,8 @@ type GroupStoreStats struct {
 	tombstoneDiscardInterval   int
 	outPullReplicationWorkers  uint64
 	outPullReplicationInterval int
-	outPushReplicationWorkers  int
-	outPushReplicationInterval int
+	pushReplicationWorkers     int
+	pushReplicationInterval    int
 	valueCap                   uint32
 	pageSize                   uint32
 	minValueAlloc              int
@@ -167,7 +167,7 @@ type GroupStoreStats struct {
 	locmapDebugInfo            fmt.Stringer
 }
 
-func (store *DefaultGroupStore) Stats(debug bool) fmt.Stringer {
+func (store *defaultGroupStore) Stats(debug bool) fmt.Stringer {
 	store.statsLock.Lock()
 	stats := &GroupStoreStats{
 		Lookups:                      atomic.LoadInt32(&store.lookups),
@@ -286,8 +286,8 @@ func (store *DefaultGroupStore) Stats(debug bool) fmt.Stringer {
 		stats.tombstoneDiscardInterval = store.tombstoneDiscardState.interval
 		stats.outPullReplicationWorkers = store.pullReplicationState.outWorkers
 		stats.outPullReplicationInterval = store.pullReplicationState.outInterval
-		stats.outPushReplicationWorkers = store.pushReplicationState.outWorkers
-		stats.outPushReplicationInterval = store.pushReplicationState.outInterval
+		stats.pushReplicationWorkers = store.pushReplicationState.workers
+		stats.pushReplicationInterval = store.pushReplicationState.interval
 		stats.valueCap = store.valueCap
 		stats.pageSize = store.pageSize
 		stats.minValueAlloc = store.minValueAlloc
@@ -378,8 +378,8 @@ func (stats *GroupStoreStats) String() string {
 			{"tombstoneDiscardInterval", fmt.Sprintf("%d", stats.tombstoneDiscardInterval)},
 			{"outPullReplicationWorkers", fmt.Sprintf("%d", stats.outPullReplicationWorkers)},
 			{"outPullReplicationInterval", fmt.Sprintf("%d", stats.outPullReplicationInterval)},
-			{"outPushReplicationWorkers", fmt.Sprintf("%d", stats.outPushReplicationWorkers)},
-			{"outPushReplicationInterval", fmt.Sprintf("%d", stats.outPushReplicationInterval)},
+			{"pushReplicationWorkers", fmt.Sprintf("%d", stats.pushReplicationWorkers)},
+			{"pushReplicationInterval", fmt.Sprintf("%d", stats.pushReplicationInterval)},
 			{"valueCap", fmt.Sprintf("%d", stats.valueCap)},
 			{"pageSize", fmt.Sprintf("%d", stats.pageSize)},
 			{"minValueAlloc", fmt.Sprintf("%d", stats.minValueAlloc)},

@@ -5,6 +5,51 @@
 //
 // It also contains tools for using a ring as a messaging hub, easing
 // communication between nodes in the ring.
+//
+// Here's a quick example of building a ring and discovering what items are
+// assigned to what nodes:
+//
+//  package main
+//
+//  import (
+//  	"fmt"
+//  	"hash/fnv"
+//
+//  	"github.com/gholt/ring"
+//  )
+//
+//  func main() {
+//      // Note that we're ignoring errors for the purpose of a shorter example.
+//      // The 64 indicates how many bits can be used in a uint64 for node IDs;
+//      // 64 is fine unless you have a specific use case.
+//      builder := ring.NewBuilder(64)
+//      // (active, capacity, no tiers, no addresses, meta, no config)
+//      builder.AddNode(true, 1, nil, nil, "NodeA", nil)
+//      builder.AddNode(true, 1, nil, nil, "NodeB", nil)
+//      builder.AddNode(true, 1, nil, nil, "NodeC", nil)
+//      // This rebalances if necessary and provides a usable Ring instance.
+//  	ring := builder.Ring()
+//      // This value indicates how many bits are in use for determining ring
+//      // partitions.
+//      partitionBitCount := ring.PartitionBitCount()
+//      for _, item := range []string{"First", "Second", "Third"} {
+//          // We're using fnv hashing here, but you can use whatever you like.
+//          // We don't actually recommend fnv, but it's useful for this example.
+//  		hasher := fnv.New64a()
+//  		hasher.Write([]byte(item))
+//  		partition := uint32(hasher.Sum64() >> (64 - partitionBitCount))
+//          // We can just grab the first node since this example just uses one
+//          // replica. See Builder.SetReplicaCount for more information.
+//          node := ring.ResponsibleNodes(partition)[0]
+//          fmt.Printf("%s is handled by %v\n", item, node.Meta())
+//      }
+//  }
+//
+// The output would be:
+//
+//  First is handled by NodeC
+//  Second is handled by NodeB
+//  Third is handled by NodeB
 package ring
 
 import (
@@ -15,22 +60,47 @@ import (
 	"math"
 )
 
-const (
-	// RINGVERSION is the ring file format version written to and checked
-	// for in the ring file header. If the on disk format of the ring changes
-	// this version should be incremented.
-	RINGVERSION = "RINGv00000000001"
-)
+// RINGVERSION is the ring file format version written to and checked for in
+// the ring file header. If the on disk format of the ring changes this version
+// should be incremented.
+const RINGVERSION = "RINGv00000000001"
 
 // Ring is the immutable snapshot of data assignments to nodes.
+//
+// The immutable characteristic is important, as it means code that uses a Ring
+// can make calculations around its attributes and not worry about those
+// attributes changing from call to call. For example, the PartitionBitCount
+// can be used to generate a list of partitions that are then used with
+// ResponsibleNodes without worrying the PartitionBitCount changed during the
+// calculations. Changes to the Ring are done by the Builder, which will
+// generate a new immutable Ring instance to be distributed to the users of the
+// older Ring instance. There is one exception, however; the LocalNode
+// attribute is mutable as its function is to represent the local user of that
+// Ring instance.
+//
+// Note that with several methods the partition value is not bounds checked; an
+// invalid partition will cause a panic. This behavior is for speed reasons, as
+// bounds checking every call would be wasteful in most use cases that already
+// guarantee proper bounding. You could easily create a BoundedRing that wraps
+// a Ring instance to provide such bounding if you really need it; but
+// considering most uses of partitions involve bit shifting based on the
+// PartitionBitCount, such bounding doesn't seem worth it.
 type Ring interface {
 	// Version is the time.Now().UnixNano() of when the Ring data was
 	// established.
+	//
+	// Version can indicate changes in ring data; for example, if a server is
+	// currently working with one version of ring data and receives requests
+	// that are based on a lesser version of ring data, it can ignore those
+	// requests or send an "obsoleted" response or something along those lines.
+	// Similarly, if the server receives requests for a greater version of ring
+	// data, it can ignore those requests or try to obtain a newer ring
+	// version.
 	Version() int64
-	// Conf returns the raw encoded global configuration.
-	Conf() []byte
-	// SetConf stores the provided config bytes.
-	SetConf(conf []byte)
+	// Config returns the raw encoded global configuration. This configuration
+	// data isn't used by the ring itself, but can be useful in storing
+	// configuration data for users of the ring.
+	Config() []byte
 	// Node returns the node instance identified, if there is one.
 	Node(nodeID uint64) Node
 	// Nodes returns a NodeSlice of the nodes the Ring references.
@@ -39,9 +109,12 @@ type Ring interface {
 	// string is always an available value at any level, although it is not
 	// returned from this method.
 	Tiers() [][]string
-	// PartitionBitCount indicates how many partitions the Ring has. For
-	// example, a PartitionBitCount of 16 would indicate 2**16 or 65,536
-	// partitions.
+	// PartitionBitCount is the number of bits that can be used to determine a
+	// partition number for the current data in the ring. For example, to
+	// convert a uint64 hash value into a partition number you could use
+	// hashValue >> (64 - ring.PartitionBitCount()). The PartitionBitCount also
+	// indicates how many partitions the Ring has; for example, a value of 16
+	// would indicate 2**16 or 65,536 partitions.
 	PartitionBitCount() uint16
 	// ReplicaCount specifies how many replicas the Ring has.
 	ReplicaCount() int
@@ -49,21 +122,37 @@ type Ring interface {
 	// local node binding is used by things such as MsgRing to know what items
 	// are bound for the local instance or need to be sent to remote ones, etc.
 	LocalNode() Node
+	// SetLocalNode sets the node the ring is locally bound to, if any. This
+	// local node binding is used by things such as MsgRing to know what items
+	// are bound for the local instance or need to be sent to remote ones, etc.
 	SetLocalNode(nodeID uint64)
 	// Responsible will return true if LocalNode is set and one of the
 	// partition's replicas is assigned to that local node.
+	//
+	// Note that the partition value is not bounds checked; an invalid
+	// partition will cause a panic. See the documentation for the Ring
+	// interface itself for further discussion.
 	Responsible(partition uint32) bool
 	// ResponsibleReplica will return the replica index >= 0 if LocalNode is
 	// set and one of the partition's replicas is assigned to that local node;
 	// it will return -1 if LocalNode is not responsible for the partition.
+	//
+	// Note that the partition value is not bounds checked; an invalid
+	// partition will cause a panic. See the documentation for the Ring
+	// interface itself for further discussion.
 	ResponsibleReplica(partition uint32) int
 	// ResponsibleNodes will return the list of nodes that are responsible for
 	// the replicas of the partition.
+	//
+	// Note that the partition value is not bounds checked; an invalid
+	// partition will cause a panic. See the documentation for the Ring
+	// interface itself for further discussion.
 	ResponsibleNodes(partition uint32) NodeSlice
-	// Stats returns information about the ring for reporting purposes.
-	Stats() *RingStats
+	// Stats gives information about the ring and its health; the MaxUnder and
+	// MaxOver values specifically indicate how balanced the ring is.
+	Stats() *Stats
 	// Persist saves the Ring state to the given Writer for later reloading via
-	// the LoadBuilder method.
+	// the LoadRing method.
 	Persist(w io.Writer) error
 }
 
@@ -74,7 +163,7 @@ type tierBase struct {
 type ring struct {
 	tierBase
 	version                       int64
-	conf                          []byte
+	config                        []byte
 	localNodeIndex                int32
 	partitionBitCount             uint16
 	nodes                         []*node
@@ -105,13 +194,13 @@ func LoadRing(rd io.Reader) (Ring, error) {
 	if err != nil {
 		return nil, err
 	}
-	var confbytes int32
-	err = binary.Read(gr, binary.BigEndian, &confbytes)
+	var configBytes int32
+	err = binary.Read(gr, binary.BigEndian, &configBytes)
 	if err != nil {
 		return nil, err
 	}
-	r.conf = make([]byte, confbytes)
-	_, err = io.ReadFull(gr, r.conf)
+	r.config = make([]byte, configBytes)
+	_, err = io.ReadFull(gr, r.config)
 	if err != nil {
 		return nil, err
 	}
@@ -218,8 +307,8 @@ func LoadRing(rd io.Reader) (Ring, error) {
 		if err != nil {
 			return nil, err
 		}
-		r.nodes[i].conf = make([]byte, cbytes)
-		_, err = io.ReadFull(gr, r.nodes[i].conf)
+		r.nodes[i].config = make([]byte, cbytes)
+		_, err = io.ReadFull(gr, r.nodes[i].config)
 		if err != nil {
 			return nil, err
 		}
@@ -255,14 +344,14 @@ func (r *ring) Persist(w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if len(r.conf) > math.MaxInt32 {
-		return fmt.Errorf("%d conf bytes is too large; max is %d", len(r.conf), math.MaxInt32)
+	if len(r.config) > math.MaxInt32 {
+		return fmt.Errorf("%d config bytes is too large; max is %d", len(r.config), math.MaxInt32)
 	}
-	err = binary.Write(gw, binary.BigEndian, int32(len(r.conf)))
+	err = binary.Write(gw, binary.BigEndian, int32(len(r.config)))
 	if err != nil {
 		return err
 	}
-	_, err = gw.Write(r.conf)
+	_, err = gw.Write(r.config)
 	if err != nil {
 		return err
 	}
@@ -374,14 +463,14 @@ func (r *ring) Persist(w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if len(n.conf) > math.MaxInt32 {
-			return fmt.Errorf("%d conf length is too large; max is %d", len(n.conf), math.MaxInt32)
+		if len(n.config) > math.MaxInt32 {
+			return fmt.Errorf("%d config length is too large; max is %d", len(n.config), math.MaxInt32)
 		}
-		err = binary.Write(gw, binary.BigEndian, int32(len(n.conf)))
+		err = binary.Write(gw, binary.BigEndian, int32(len(n.config)))
 		if err != nil {
 			return err
 		}
-		_, err = gw.Write(n.conf)
+		_, err = gw.Write(n.config)
 		if err != nil {
 			return err
 		}
@@ -410,29 +499,14 @@ func (r *ring) Persist(w io.Writer) error {
 	return nil
 }
 
-// Version can indicate changes in ring data; for example, if a server is
-// currently working with one version of ring data and receives requests that
-// are based on a lesser version of ring data, it can ignore those requests or
-// send an "obsoleted" response or something along those lines. Similarly, if
-// the server receives requests for a greater version of ring data, it can
-// ignore those requests or try to obtain a newer ring version.
 func (r *ring) Version() int64 {
 	return r.version
 }
 
-// GlobalConf is the raw encoded bytes of the config object.
-func (r *ring) Conf() []byte {
-	return r.conf
+func (r *ring) Config() []byte {
+	return r.config
 }
 
-func (r *ring) SetConf(conf []byte) {
-	r.conf = conf
-}
-
-// PartitionBitCount is the number of bits that can be used to determine a
-// partition number for the current data in the ring. For example, to convert a
-// uint64 hash value into a partition number you could use hashValue >> (64 -
-// ring.PartitionBitCount()).
 func (r *ring) PartitionBitCount() uint16 {
 	return r.partitionBitCount
 }
@@ -441,7 +515,6 @@ func (r *ring) ReplicaCount() int {
 	return len(r.replicaToPartitionToNodeIndex)
 }
 
-// Nodes returns a list of nodes referenced by the ring.
 func (r *ring) Nodes() NodeSlice {
 	nodes := make(NodeSlice, len(r.nodes))
 	for i := len(nodes) - 1; i >= 0; i-- {
@@ -468,10 +541,6 @@ func (r *ring) Tiers() [][]string {
 	return rv
 }
 
-// LocalNode contains the information for the local node; determining which
-// ring partitions/replicas the local node is responsible for as well as being
-// used to direct message delivery. If this instance of the ring has no local
-// node information, nil will be returned.
 func (r *ring) LocalNode() Node {
 	if r.localNodeIndex == -1 {
 		return nil
@@ -489,8 +558,6 @@ func (r *ring) SetLocalNode(id uint64) {
 	}
 }
 
-// Responsible will return true if the local node is considered responsible for
-// a replica of the partition given.
 func (r *ring) Responsible(partition uint32) bool {
 	if r.localNodeIndex == -1 {
 		return false
@@ -503,9 +570,6 @@ func (r *ring) Responsible(partition uint32) bool {
 	return false
 }
 
-// ResponsibleReplica will return the replica index >= 0 if LocalNode is set
-// and one of the partition's replicas is assigned to that local node; it will
-// return -1 if LocalNode is not responsible for the partition.
 func (r *ring) ResponsibleReplica(partition uint32) int {
 	if r.localNodeIndex == -1 {
 		return -1
@@ -518,8 +582,6 @@ func (r *ring) ResponsibleReplica(partition uint32) int {
 	return -1
 }
 
-// ResponsibleNodes will return a list of nodes for considered responsible for
-// the replicas of the partition given.
 func (r *ring) ResponsibleNodes(partition uint32) NodeSlice {
 	nodes := make(NodeSlice, r.ReplicaCount())
 	for replica, partitionToNodeIndex := range r.replicaToPartitionToNodeIndex {
@@ -528,9 +590,9 @@ func (r *ring) ResponsibleNodes(partition uint32) NodeSlice {
 	return nodes
 }
 
-// RingStats gives an overview of the state and health of a Ring. It is
-// returned by the Ring.Stats() method.
-type RingStats struct {
+// Stats gives an overview of the state and health of a Ring. It is returned by
+// the Ring.Stats() method.
+type Stats struct {
 	ReplicaCount      int
 	NodeCount         int
 	InactiveNodeCount int
@@ -547,10 +609,8 @@ type RingStats struct {
 	MaxOverNodeID         uint64
 }
 
-// Stats gives information about the ring and its health; the MaxUnder and
-// MaxOver values specifically indicate how balanced the ring is.
-func (r *ring) Stats() *RingStats {
-	stats := &RingStats{
+func (r *ring) Stats() *Stats {
+	stats := &Stats{
 		ReplicaCount:      r.ReplicaCount(),
 		NodeCount:         len(r.nodes),
 		PartitionBitCount: r.PartitionBitCount(),

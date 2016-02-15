@@ -11,54 +11,33 @@ import (
 )
 
 type groupCompactionState struct {
-	interval       int
-	threshold      float64
-	ageThreshold   int64
-	workerCount    int
-	notifyChanLock sync.Mutex
-	notifyChan     chan *bgNotification
+	interval     int
+	threshold    float64
+	ageThreshold int64
+	workerCount  int
+
+	startupShutdownLock sync.Mutex
+	notifyChan          chan *bgNotification
 }
 
-func (store *DefaultGroupStore) compactionConfig(cfg *GroupStoreConfig) {
+func (store *defaultGroupStore) compactionConfig(cfg *GroupStoreConfig) {
 	store.compactionState.interval = cfg.CompactionInterval
 	store.compactionState.threshold = cfg.CompactionThreshold
 	store.compactionState.ageThreshold = int64(cfg.CompactionAgeThreshold * 1000000000)
 	store.compactionState.workerCount = cfg.CompactionWorkers
 }
 
-// CompactionPass will immediately execute a compaction pass to compact stale
-// files.
-func (store *DefaultGroupStore) CompactionPass() {
-	store.compactionState.notifyChanLock.Lock()
-	if store.compactionState.notifyChan == nil {
-		store.compactionPass(make(chan *bgNotification))
-	} else {
-		c := make(chan struct{}, 1)
-		store.compactionState.notifyChan <- &bgNotification{
-			action:   _BG_PASS,
-			doneChan: c,
-		}
-		<-c
-	}
-	store.compactionState.notifyChanLock.Unlock()
-}
-
-// EnableCompaction will resume compaction passes. A compaction pass searches
-// for files with a percentage of XX deleted entries.
-func (store *DefaultGroupStore) EnableCompaction() {
-	store.compactionState.notifyChanLock.Lock()
+func (store *defaultGroupStore) compactionStartup() {
+	store.compactionState.startupShutdownLock.Lock()
 	if store.compactionState.notifyChan == nil {
 		store.compactionState.notifyChan = make(chan *bgNotification, 1)
 		go store.compactionLauncher(store.compactionState.notifyChan)
 	}
-	store.compactionState.notifyChanLock.Unlock()
+	store.compactionState.startupShutdownLock.Unlock()
 }
 
-// DisableCompaction will stop any compaction passes until EnableCompaction is
-// called. A compaction pass searches for files with a percentage of XX deleted
-// entries.
-func (store *DefaultGroupStore) DisableCompaction() {
-	store.compactionState.notifyChanLock.Lock()
+func (store *defaultGroupStore) compactionShutdown() {
+	store.compactionState.startupShutdownLock.Lock()
 	if store.compactionState.notifyChan != nil {
 		c := make(chan struct{}, 1)
 		store.compactionState.notifyChan <- &bgNotification{
@@ -68,10 +47,10 @@ func (store *DefaultGroupStore) DisableCompaction() {
 		<-c
 		store.compactionState.notifyChan = nil
 	}
-	store.compactionState.notifyChanLock.Unlock()
+	store.compactionState.startupShutdownLock.Unlock()
 }
 
-func (store *DefaultGroupStore) compactionLauncher(notifyChan chan *bgNotification) {
+func (store *defaultGroupStore) compactionLauncher(notifyChan chan *bgNotification) {
 	interval := float64(store.compactionState.interval) * float64(time.Second)
 	store.randMutex.Lock()
 	nextRun := time.Now().Add(time.Duration(interval + interval*store.rand.NormFloat64()*0.1))
@@ -121,13 +100,11 @@ type groupCompactionJob struct {
 	candidateBlockID uint32
 }
 
-func (store *DefaultGroupStore) compactionPass(notifyChan chan *bgNotification) *bgNotification {
-	if store.logDebug != nil {
-		begin := time.Now()
-		defer func() {
-			store.logDebug("compaction: pass took %s", time.Now().Sub(begin))
-		}()
-	}
+func (store *defaultGroupStore) compactionPass(notifyChan chan *bgNotification) *bgNotification {
+	begin := time.Now()
+	defer func() {
+		store.logDebug("compaction: pass took %s", time.Now().Sub(begin))
+	}()
 	names, err := store.readdirnames(store.pathtoc)
 	if err != nil {
 		store.logError("compaction: %s", err)
@@ -173,7 +150,7 @@ func (store *DefaultGroupStore) compactionPass(notifyChan chan *bgNotification) 
 
 // compactionCandidate verifies that the given file name is a valid candidate
 // for compaction and also returns the extracted namets.
-func (store *DefaultGroupStore) compactionCandidate(name string) (int64, bool) {
+func (store *defaultGroupStore) compactionCandidate(name string) (int64, bool) {
 	if !strings.HasSuffix(name, ".grouptoc") {
 		return 0, false
 	}
@@ -196,7 +173,7 @@ func (store *DefaultGroupStore) compactionCandidate(name string) (int64, bool) {
 	return namets, true
 }
 
-func (store *DefaultGroupStore) compactionWorker(jobChan chan *groupCompactionJob, controlChan chan struct{}, wg *sync.WaitGroup) {
+func (store *defaultGroupStore) compactionWorker(jobChan chan *groupCompactionJob, controlChan chan struct{}, wg *sync.WaitGroup) {
 	for c := range jobChan {
 		select {
 		case <-controlChan:
@@ -229,7 +206,7 @@ func (store *DefaultGroupStore) compactionWorker(jobChan chan *groupCompactionJo
 	wg.Done()
 }
 
-func (store *DefaultGroupStore) needsCompaction(nametoc string, candidateBlockID uint32, total int, toCheck uint32) bool {
+func (store *defaultGroupStore) needsCompaction(nametoc string, candidateBlockID uint32, total int, toCheck uint32) bool {
 	stale := uint32(0)
 	checked := uint32(0)
 	// Compaction workers work on one file each; maybe we'll expand the workers
@@ -299,13 +276,11 @@ func (store *DefaultGroupStore) needsCompaction(nametoc string, candidateBlockID
 		store.logError("compaction: since there were errors while reading %s, compaction is needed", nametoc)
 		return true
 	}
-	if store.logDebug != nil {
-		store.logDebug("compaction: sample result: %s had %d entries; checked %d entries, %d were stale", nametoc, total, checked, stale)
-	}
+	store.logDebug("compaction: sample result: %s had %d entries; checked %d entries, %d were stale", nametoc, total, checked, stale)
 	return stale > uint32(float64(checked)*store.compactionState.threshold)
 }
 
-func (store *DefaultGroupStore) compactFile(nametoc string, blockID uint32, controlChan chan struct{}) {
+func (store *defaultGroupStore) compactFile(nametoc string, blockID uint32, controlChan chan struct{}) {
 	// TODO: Compaction needs to rewrite all the good entries it can, but also
 	// deliberately remove any known bad entries from the locmap so that
 	// replication can get them back in place from other servers.
@@ -393,9 +368,7 @@ func (store *DefaultGroupStore) compactFile(nametoc string, blockID uint32, cont
 				}
 			}
 		}
-		if store.logDebug != nil {
-			store.logDebug("compactFile: %s (total %d, rewrote %d, stale %d)", nametoc, atomic.LoadUint32(&count), atomic.LoadUint32(&rewrote), atomic.LoadUint32(&stale))
-		}
+		store.logDebug("compactFile: %s (total %d, rewrote %d, stale %d)", nametoc, atomic.LoadUint32(&count), atomic.LoadUint32(&rewrote), atomic.LoadUint32(&stale))
 	}
 	fpr, err := store.openReadSeeker(fullpathtoc)
 	if err != nil {
@@ -410,9 +383,7 @@ func (store *DefaultGroupStore) compactFile(nametoc string, blockID uint32, cont
 	}
 	select {
 	case <-controlChan:
-		if store.logDebug != nil {
-			store.logDebug("compactFile: canceled compaction of %s.", nametoc)
-		}
+		store.logDebug("compactFile: canceled compaction of %s.", nametoc)
 		spindown(false)
 		return
 	default:

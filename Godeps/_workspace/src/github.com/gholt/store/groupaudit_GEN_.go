@@ -15,22 +15,40 @@ type groupAuditState struct {
 	interval     int
 	ageThreshold int64
 
-	notifyChanLock sync.Mutex
-	notifyChan     chan *bgNotification
+	startupShutdownLock sync.Mutex
+	notifyChan          chan *bgNotification
 }
 
-func (store *DefaultGroupStore) auditConfig(cfg *GroupStoreConfig) {
+func (store *defaultGroupStore) auditConfig(cfg *GroupStoreConfig) {
 	store.auditState.interval = cfg.AuditInterval
 	store.auditState.ageThreshold = int64(cfg.AuditAgeThreshold) * int64(time.Second)
 }
 
-// AuditPass will immediately execute a pass at full speed to check the on-disk
-// data for errors rather than waiting for the next interval to run the
-// standard slow-audit pass. If a pass is currently executing, it will be
-// stopped and restarted so that a call to this function ensures one complete
-// pass occurs.
-func (store *DefaultGroupStore) AuditPass() {
-	store.auditState.notifyChanLock.Lock()
+func (store *defaultGroupStore) auditStartup() {
+	store.auditState.startupShutdownLock.Lock()
+	if store.auditState.notifyChan == nil {
+		store.auditState.notifyChan = make(chan *bgNotification, 1)
+		go store.auditLauncher(store.auditState.notifyChan)
+	}
+	store.auditState.startupShutdownLock.Unlock()
+}
+
+func (store *defaultGroupStore) auditShutdown() {
+	store.auditState.startupShutdownLock.Lock()
+	if store.auditState.notifyChan != nil {
+		c := make(chan struct{}, 1)
+		store.auditState.notifyChan <- &bgNotification{
+			action:   _BG_DISABLE,
+			doneChan: c,
+		}
+		<-c
+		store.auditState.notifyChan = nil
+	}
+	store.auditState.startupShutdownLock.Unlock()
+}
+
+func (store *defaultGroupStore) AuditPass() {
+	store.auditState.startupShutdownLock.Lock()
 	if store.auditState.notifyChan == nil {
 		store.auditPass(true, make(chan *bgNotification))
 	} else {
@@ -41,37 +59,10 @@ func (store *DefaultGroupStore) AuditPass() {
 		}
 		<-c
 	}
-	store.auditState.notifyChanLock.Unlock()
+	store.auditState.startupShutdownLock.Unlock()
 }
 
-// EnableAudit will resume audit passes. An audit pass checks on-disk data for
-// errors.
-func (store *DefaultGroupStore) EnableAudit() {
-	store.auditState.notifyChanLock.Lock()
-	if store.auditState.notifyChan == nil {
-		store.auditState.notifyChan = make(chan *bgNotification, 1)
-		go store.auditLauncher(store.auditState.notifyChan)
-	}
-	store.auditState.notifyChanLock.Unlock()
-}
-
-// DisableAudit will stop any audit passes until EnableAudit is called. An
-// audit pass checks on-disk data for errors.
-func (store *DefaultGroupStore) DisableAudit() {
-	store.auditState.notifyChanLock.Lock()
-	if store.auditState.notifyChan != nil {
-		c := make(chan struct{}, 1)
-		store.auditState.notifyChan <- &bgNotification{
-			action:   _BG_DISABLE,
-			doneChan: c,
-		}
-		<-c
-		store.auditState.notifyChan = nil
-	}
-	store.auditState.notifyChanLock.Unlock()
-}
-
-func (store *DefaultGroupStore) auditLauncher(notifyChan chan *bgNotification) {
+func (store *defaultGroupStore) auditLauncher(notifyChan chan *bgNotification) {
 	interval := float64(store.auditState.interval) * float64(time.Second)
 	store.randMutex.Lock()
 	nextRun := time.Now().Add(time.Duration(interval + interval*store.rand.NormFloat64()*0.1))
@@ -119,13 +110,11 @@ func (store *DefaultGroupStore) auditLauncher(notifyChan chan *bgNotification) {
 // NOTE: For now, there is no difference between speed=true and speed=false;
 // eventually the background audits will try to slow themselves down to finish
 // in approximately the store.auditState.interval.
-func (store *DefaultGroupStore) auditPass(speed bool, notifyChan chan *bgNotification) *bgNotification {
-	if store.logDebug != nil {
-		begin := time.Now()
-		defer func() {
-			store.logDebug("audit: took %s", time.Now().Sub(begin))
-		}()
-	}
+func (store *defaultGroupStore) auditPass(speed bool, notifyChan chan *bgNotification) *bgNotification {
+	begin := time.Now()
+	defer func() {
+		store.logDebug("audit: took %s", time.Now().Sub(begin))
+	}()
 	names, err := store.readdirnames(store.pathtoc)
 	if err != nil {
 		store.logError("audit: %s", err)
@@ -157,20 +146,14 @@ func (store *DefaultGroupStore) auditPass(speed bool, notifyChan chan *bgNotific
 			continue
 		}
 		if namets == int64(atomic.LoadUint64(&store.activeTOCA)) || namets == int64(atomic.LoadUint64(&store.activeTOCB)) {
-			if store.logDebug != nil {
-				store.logDebug("audit: skipping current %s", names[i])
-			}
+			store.logDebug("audit: skipping current %s", names[i])
 			continue
 		}
 		if namets >= time.Now().UnixNano()-store.auditState.ageThreshold {
-			if store.logDebug != nil {
-				store.logDebug("audit: skipping young %s", names[i])
-			}
+			store.logDebug("audit: skipping young %s", names[i])
 			continue
 		}
-		if store.logDebug != nil {
-			store.logDebug("audit: checking %s", names[i])
-		}
+		store.logDebug("audit: checking %s", names[i])
 		failedAudit := uint32(0)
 		canceledAudit := uint32(0)
 		dataName := names[i][:len(names[i])-3]
@@ -178,9 +161,7 @@ func (store *DefaultGroupStore) auditPass(speed bool, notifyChan chan *bgNotific
 		if err != nil {
 			atomic.AddUint32(&failedAudit, 1)
 			if store.isNotExist(err) {
-				if store.logDebug != nil {
-					store.logDebug("audit: error opening %s: %s", dataName, err)
-				}
+				store.logDebug("audit: error opening %s: %s", dataName, err)
 			} else {
 				store.logError("audit: error opening %s: %s", dataName, err)
 			}
@@ -271,13 +252,9 @@ func (store *DefaultGroupStore) auditPass(speed bool, notifyChan chan *bgNotific
 			}
 		}
 		if atomic.LoadUint32(&canceledAudit) != 0 {
-			if store.logDebug != nil {
-				store.logDebug("audit: canceled during %s", names[i])
-			}
+			store.logDebug("audit: canceled during %s", names[i])
 		} else if atomic.LoadUint32(&failedAudit) == 0 {
-			if store.logDebug != nil {
-				store.logDebug("audit: passed %s", names[i])
-			}
+			store.logDebug("audit: passed %s", names[i])
 		} else {
 			store.logError("audit: failed %s", names[i])
 			nextNotificationChan := make(chan *bgNotification, 1)

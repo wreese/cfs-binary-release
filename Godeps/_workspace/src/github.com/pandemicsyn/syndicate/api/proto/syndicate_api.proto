@@ -43,6 +43,9 @@ service Syndicate {
     rpc ModNode(ModifyMsg) returns (RingStatus) {}
     rpc SetConf(Conf) returns (RingStatus) {}
     rpc SetActive(Node) returns (RingStatus) {}
+    rpc SetCapacity(Node) returns (RingStatus) {}
+    rpc ReplaceAddresses(Node) returns (RingStatus) {}
+    rpc ReplaceTiers(Node) returns (RingStatus) {}
     rpc GetVersion(EmptyMsg) returns (RingStatus) {}
     rpc GetGlobalConfig(EmptyMsg) returns (RingConf) {}
     rpc GetNodeConfig(Node) returns (RingConf) {}
@@ -88,9 +91,21 @@ message RegisterRequest {
     string hostname = 1;
     repeated string addrs = 2;
     repeated string tiers = 3;
-    int32 disks = 4; //not used yet
-    int32 cores = 5; //not used yet
-    string hardwareid = 6; //not used yet
+    HardwareProfile hardware = 4;
+}
+
+message HardwareProfile {
+    uint64 memtotal = 1;
+    uint64 memfree = 2;
+    int64 cpus = 3;
+    repeated Disk disks = 4;
+}
+
+message Disk {
+    string device = 1;
+    string path = 2;
+    uint64  size = 3;
+    uint64  used = 4;
 }
 
 message NodeConfig {
@@ -99,7 +114,7 @@ message NodeConfig {
 }
 
 message Ring {
-    uint64 version = 1;
+    int64 version = 1;
     bytes ring = 2;
 }
 

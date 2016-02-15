@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	pb "github.com/pandemicsyn/syndicate/api/proto"
 )
 
 // FatalIf is just a lazy log/panic on error func
@@ -73,4 +75,15 @@ func findLastRing(cfg *Config) (lastBuilder string, lastRing string, err error) 
 		lastRing = filepath.Join(cfg.RingDir, fn[len(fn)-1])
 	}
 	return lastBuilder, lastRing, nil
+}
+
+func ExtractCapacity(path string, disks []*pb.Disk) uint32 {
+	for k := range disks {
+		if disks[k] != nil {
+			if disks[k].Path == path {
+				return uint32(disks[k].Size / 1024 / 1024 / 1024)
+			}
+		}
+	}
+	return 0
 }

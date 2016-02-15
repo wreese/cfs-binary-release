@@ -44,8 +44,8 @@ type Node interface {
 	// Meta is additional information for the node; not defined or used by the
 	// builder or ring directly.
 	Meta() string
-	// Conf contains the raw config bytes for this node.
-	Conf() []byte
+	// Config contains the raw configuration bytes for this node.
+	Config() []byte
 }
 
 // BuilderNode extends Node to allow for updating attributes. A Ring needs
@@ -56,9 +56,11 @@ type BuilderNode interface {
 	SetActive(value bool)
 	SetCapacity(value uint32)
 	SetTier(level int, value string)
+	ReplaceTiers(tiers []string)
 	SetAddress(index int, value string)
+	ReplaceAddresses(addrs []string)
 	SetMeta(value string)
-	SetConf(conf []byte)
+	SetConfig(config []byte)
 }
 
 type node struct {
@@ -72,7 +74,7 @@ type node struct {
 	tierIndexes []int32
 	addresses   []string
 	meta        string
-	conf        []byte
+	config      []byte
 }
 
 func newNode(b *Builder, tb *tierBase, others []*node) (*node, error) {
@@ -165,8 +167,8 @@ func (n *node) Meta() string {
 	return n.meta
 }
 
-func (n *node) Conf() []byte {
-	return n.conf
+func (n *node) Config() []byte {
+	return n.config
 }
 
 func (n *node) SetActive(value bool) {
@@ -215,6 +217,16 @@ func (n *node) SetTier(level int, value string) {
 	n.tierIndexes[level] = int32(index)
 }
 
+func (n *node) ReplaceTiers(tiers []string) {
+	if n.builder != nil {
+		n.builder.dirty = true
+	}
+	n.tierIndexes = []int32{}
+	for level, value := range tiers {
+		n.SetTier(level, value)
+	}
+}
+
 func (n *node) SetAddress(index int, value string) {
 	if n.builder != nil {
 		n.builder.dirty = true
@@ -227,6 +239,13 @@ func (n *node) SetAddress(index int, value string) {
 	n.addresses[index] = value
 }
 
+func (n *node) ReplaceAddresses(addrs []string) {
+	if n.builder != nil {
+		n.builder.dirty = true
+	}
+	n.addresses = addrs
+}
+
 func (n *node) SetMeta(value string) {
 	if n.builder != nil {
 		n.builder.dirty = true
@@ -234,22 +253,23 @@ func (n *node) SetMeta(value string) {
 	n.meta = value
 }
 
-func (n *node) SetConf(conf []byte) {
+func (n *node) SetConfig(config []byte) {
 	if n.builder != nil {
 		n.builder.dirty = true
 	}
-	n.conf = conf
+	n.config = config
 }
 
 type NodeSlice []Node
 
 // Filter will return a new NodeSlice with just the nodes that match the
-// filters given. The basic filter syntax is that "attribute=value" will filter
-// to just nodes whose attribute exactly match the value and "attribute~=value"
-// will similarly filter but treat the value as a regular expression. The
-// available attributes to filter on are:
+// filters given; multiple filters are ANDed. The basic filter syntax is that
+// "attribute=value" will filter to just nodes whose attribute exactly match
+// the value and "attribute~=value" will similarly filter but treat the value
+// as a regular expression (per the http://golang.org/pkg/regexp/
+// implementation). The available attributes to filter on are:
 //
-//      id          A node's id (uint64 represented as %016x).
+//      id          A node's id (uint64 represented as %d).
 //      active      Whether a node is active or not (use "true" or "false").
 //      capacity    A node's capacity.
 //      tier        Any tier of a node.
@@ -291,11 +311,11 @@ func (ns NodeSlice) Filter(filters []string) (NodeSlice, error) {
 		case "id":
 			if re == nil {
 				matcher = func(n Node) bool {
-					return sfilter[1] == fmt.Sprintf("%016x", n.ID())
+					return sfilter[1] == fmt.Sprintf("%d", n.ID())
 				}
 			} else {
 				matcher = func(n Node) bool {
-					return re.MatchString(fmt.Sprintf("%016x", n.ID()))
+					return re.MatchString(fmt.Sprintf("%d", n.ID()))
 				}
 			}
 		case "active":

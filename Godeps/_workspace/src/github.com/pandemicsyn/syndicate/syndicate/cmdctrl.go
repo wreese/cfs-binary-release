@@ -30,9 +30,9 @@ func ParseManagedNodeAddress(addr string, port int) (string, error) {
 	return fmt.Sprintf("%s:%d", host, port), nil
 }
 
-func bootstrapManagedNodes(ring ring.Ring, ccport int) map[uint64]*ManagedNode {
+func bootstrapManagedNodes(ring ring.Ring, ccport int, gopts ...grpc.DialOption) map[uint64]ManagedNode {
 	nodes := ring.Nodes()
-	m := make(map[uint64]*ManagedNode, len(nodes))
+	m := make(map[uint64]ManagedNode, len(nodes))
 	for _, node := range nodes {
 		addr, err := ParseManagedNodeAddress(node.Address(0), ccport)
 		if err != nil {
@@ -40,7 +40,7 @@ func bootstrapManagedNodes(ring ring.Ring, ccport int) map[uint64]*ManagedNode {
 			log.Println("Node NOT a managed node!")
 			continue
 		}
-		m[node.ID()], err = NewManagedNode(addr)
+		m[node.ID()], err = NewManagedNode(&ManagedNodeOpts{Address: addr, GrpcOpts: gopts})
 		if err != nil {
 			log.Printf("Error bootstrapping node %d: %v", node.ID(), err)
 		} else {
@@ -50,7 +50,22 @@ func bootstrapManagedNodes(ring ring.Ring, ccport int) map[uint64]*ManagedNode {
 	return m
 }
 
-type ManagedNode struct {
+type ManagedNode interface {
+	ConnWaitForStateChange(context.Context, time.Duration, grpc.ConnectivityState) (grpc.ConnectivityState, error)
+	ConnState() (grpc.ConnectivityState, error)
+	Connect() error
+	Disconnect() error
+	Ping() (bool, string, error)
+	Stop() error
+	RingUpdate(*[]byte, int64) (bool, error)
+	Lock()
+	Unlock()
+	RLock()
+	RUnlock()
+	Address() string
+}
+
+type managedNode struct {
 	sync.RWMutex
 	failcount   int64
 	ringversion int64
@@ -58,29 +73,44 @@ type ManagedNode struct {
 	conn        *grpc.ClientConn
 	client      cc.CmdCtrlClient
 	address     string
+	grpcOpts    []grpc.DialOption
 }
 
-func NewManagedNode(address string) (*ManagedNode, error) {
+type ManagedNodeOpts struct {
+	Address  string
+	GrpcOpts []grpc.DialOption
+}
+
+func NewManagedNode(o *ManagedNodeOpts) (ManagedNode, error) {
 	var err error
-	if address == "" {
-		return &ManagedNode{}, fmt.Errorf("Invalid Address supplied")
+	node := &managedNode{}
+	if o.Address == "" {
+		return &managedNode{}, fmt.Errorf("Invalid Address supplied")
 	}
-	var opts []grpc.DialOption
+	node.address = o.Address
+	node.grpcOpts = o.GrpcOpts
+
+	// TODO: push tls setup out of NewManagedNode
 	var creds credentials.TransportAuthenticator
 	creds = credentials.NewTLS(&tls.Config{
 		InsecureSkipVerify: true,
 	})
-	opts = append(opts, grpc.WithTransportCredentials(creds))
-	s := &ManagedNode{}
-	s.address = address
-	s.conn, err = grpc.Dial(s.address, opts...)
+	node.grpcOpts = append(node.grpcOpts, grpc.WithTransportCredentials(creds))
+
+	node.conn, err = grpc.Dial(node.address, node.grpcOpts...)
 	if err != nil {
-		return &ManagedNode{}, fmt.Errorf("Failed to dial cmdctrl server for node %s: %v", s.address, err)
+		return &managedNode{}, fmt.Errorf("Failed to dial cmdctrl server for node %s: %v", node.address, err)
 	}
-	s.client = cc.NewCmdCtrlClient(s.conn)
-	s.active = false
-	s.failcount = 0
-	return s, nil
+	node.client = cc.NewCmdCtrlClient(node.conn)
+	node.active = false
+	node.failcount = 0
+	return node, nil
+}
+
+func (n *managedNode) Address() string {
+	n.RLock()
+	defer n.RUnlock()
+	return n.address
 }
 
 // Take direct from grpc.Conn.WaitForStateChange:
@@ -89,7 +119,7 @@ func NewManagedNode(address string) (*ManagedNode, error) {
 // Our instance returns if timeout fires or state changes OR returns state is Shutdown if n.conn is nil!
 // I assume we'll wanna use this do things like update synd state when a node comes online after a failure
 // or something.
-func (n *ManagedNode) ConnWaitForStateChange(ctx context.Context, timeout time.Duration, sourceState grpc.ConnectivityState) (grpc.ConnectivityState, error) {
+func (n *managedNode) ConnWaitForStateChange(ctx context.Context, timeout time.Duration, sourceState grpc.ConnectivityState) (grpc.ConnectivityState, error) {
 	n.Lock()
 	defer n.Unlock()
 	if n.conn != nil {
@@ -101,7 +131,7 @@ func (n *ManagedNode) ConnWaitForStateChange(ctx context.Context, timeout time.D
 // ConnState returns the state of the underlying grpc connection.
 // See https://godoc.org/google.golang.org/grpc#ConnectivityState for possible states.
 // Returns -1 if n.conn is nil
-func (n *ManagedNode) ConnState() (grpc.ConnectivityState, error) {
+func (n *managedNode) ConnState() (grpc.ConnectivityState, error) {
 	n.RLock()
 	defer n.RUnlock()
 	if n.conn != nil {
@@ -112,7 +142,7 @@ func (n *ManagedNode) ConnState() (grpc.ConnectivityState, error) {
 
 // Connect sets up a grpc connection for the node.
 // Note that this will overwrite an existing conn.
-func (n *ManagedNode) Connect() error {
+func (n *managedNode) Connect() error {
 	n.Lock()
 	defer n.Unlock()
 	var opts []grpc.DialOption
@@ -131,14 +161,14 @@ func (n *ManagedNode) Connect() error {
 }
 
 // Disconnect lets you disconnect a managed nodes grpc conn.
-func (n *ManagedNode) Disconnect() error {
+func (n *managedNode) Disconnect() error {
 	n.Lock()
 	defer n.Unlock()
 	return n.conn.Close()
 }
 
 // Ping verifies a node as actually still alive.
-func (n *ManagedNode) Ping() (bool, string, error) {
+func (n *managedNode) Ping() (bool, string, error) {
 	n.RLock()
 	defer n.RUnlock()
 	ctx, _ := context.WithTimeout(context.Background(), 2*time.Second)
@@ -150,7 +180,7 @@ func (n *ManagedNode) Ping() (bool, string, error) {
 }
 
 // Stop a remote node
-func (n *ManagedNode) Stop() error {
+func (n *managedNode) Stop() error {
 	n.Lock()
 	defer n.Unlock()
 	ctx, _ := context.WithTimeout(context.Background(), _FH_STOP_NODE_TIMEOUT*time.Second)
@@ -163,7 +193,7 @@ func (n *ManagedNode) Stop() error {
 }
 
 // RingUpdate lets you push a ring update to a remote node
-func (n *ManagedNode) RingUpdate(r *[]byte, version int64) (bool, error) {
+func (n *managedNode) RingUpdate(r *[]byte, version int64) (bool, error) {
 	n.Lock()
 	defer n.Unlock()
 	if n.ringversion == version {
@@ -216,10 +246,12 @@ func (s *Server) NotifyNodes() {
 	s.changeChan <- m
 }
 
+//RingChangeManager gets ring change messages from the change chan and handles
+//notifying all managed nodes.
 func (s *Server) RingChangeManager() {
 	for msg := range s.changeChan {
 		s.RLock()
-		for k, _ := range s.managedNodes {
+		for k := range s.managedNodes {
 			updated, err := s.managedNodes[k].RingUpdate(msg.rb, msg.v)
 			if err != nil {
 				if updated {
@@ -254,21 +286,20 @@ func (s *Server) removeManagedNode(nodeid uint64) {
 		s.Unlock()
 		return
 		//do something here
-	} else {
-		s.RUnlock()
-		return
 	}
+	s.RUnlock()
+	return
 }
 
 // TODO: remove me, test func
 func (s *Server) pingSweep() {
 	responses := make(map[string]string, len(s.managedNodes))
-	for k, _ := range s.managedNodes {
+	for k := range s.managedNodes {
 		_, msg, err := s.managedNodes[k].Ping()
 		if err != nil {
-			responses[s.managedNodes[k].address] = err.Error()
+			responses[s.managedNodes[k].Address()] = err.Error()
 			continue
 		}
-		responses[s.managedNodes[k].address] = msg
+		responses[s.managedNodes[k].Address()] = msg
 	}
 }
