@@ -27,8 +27,6 @@ test:
   pre:
     - go version
   override:
-    - make test
-  post:
     - GOOS=linux GOARCH=amd64 make build
 deployment:
   master:
