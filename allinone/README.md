@@ -1,6 +1,6 @@
 - Obtain a server with at least 4GB of ram runnind debian jessie
 - make sure you have forks of Syndicate/Oort/Formic (and possibly of cfs-binary-release)
-- wget https://raw.githubusercontent.com/pandemicsyn/syndicate/master/allinone/allinone.sh
+- wget https://raw.githubusercontent.com/getcfs/cfs-binary-release/master/allinone/allinone.sh
 - GIT_USER=YOURGHUSRENAME bash allinone.sh
 - Optionally use GIT_USER=YOURGHUSERNAME BUILDPROTOBUF=yes bash allinone.sh to also build protobuf 3
 - You can also use the options FANCYVIM=yes and FANCYPROMPT=yes
