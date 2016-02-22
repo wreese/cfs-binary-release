@@ -1,6 +1,6 @@
 #!/bin/bash
 
-GOVERSION=1.5.1
+export GOVERSION=1.6
 
 echo "Using $GIT_USER as user"
 
@@ -17,9 +17,9 @@ apt-get install libgrpc-dev -y --force-yes
 
 # setup go
 mkdir -p /$USER/go/bin
-export GVERSION=1.5.1
-cd /tmp &&  wget -q https://storage.googleapis.com/golang/go$GVERSION.linux-amd64.tar.gz
-tar -C /usr/local -xzf /tmp/go$GVERSION.linux-amd64.tar.gz
+
+cd /tmp &&  wget -q https://storage.googleapis.com/golang/go$GOVERSION.linux-amd64.tar.gz
+tar -C /usr/local -xzf /tmp/go$GOVERSION.linux-amd64.tar.gz
 echo " " >> /$USER/.bashrc
 echo "# Go stuff" >> /$USER/.bashrc
 echo "export PATH=\$PATH:/usr/local/go/bin" >> /$USER/.bashrc
@@ -34,7 +34,7 @@ if [ "$FANCYVIM" = "yes" ]; then
     go get golang.org/x/tools/cmd/goimports
     git clone https://github.com/fatih/vim-go.git ~/.vim/bundle/vim-go
     git clone https://github.com/Shougo/neocomplete.vim.git ~/.vim/bundle/neocomplete.vim
-    curl -o ~/.vimrc https://raw.githubusercontent.com/pandemicsyn/syndicate/master/allinone/.vimrc 
+    curl -o ~/.vimrc https://raw.githubusercontent.com/getcfs/cfs-binary-release/master/allinone/.vimrc
     go get github.com/nsf/gocode
     echo "Fancy VIM install complete. You may way want to open vim and run ':GoInstallBinaries' the first time you use it"
     sleep 1
@@ -50,7 +50,7 @@ if [ "$BUILDPROTOBUF" = "yes" ]; then
     cd protobuf
     ./autogen.sh && ./configure && make && make check && make install && ldconfig
     echo "Protobuf build done...hopefully"
-else 
+else
     echo "Built withOUT protobuf"
 fi
 
@@ -61,6 +61,7 @@ go get github.com/golang/protobuf/protoc-gen-go
 go get github.com/gogo/protobuf/proto
 go get github.com/gogo/protobuf/protoc-gen-gogo
 go get github.com/gogo/protobuf/gogoproto
+go get github.com/gogo/protobuf/protoc-gen-gofast
 go get github.com/tools/godep
 go install github.com/tools/godep
 
@@ -94,7 +95,7 @@ cd cfs-binary-release
 git remote add upstream git@github.com:getcfs/cfs-binary-release.git
 
 echo "Prepping /etc"
-cd $GOPATH/src/github.com/pandemicsyn/syndicate
+cd $GOPATH/src/github.com/getcfs/cfs-binary-release
 mkdir -p /etc/oort/ring
 mkdir -p /etc/oort/value /etc/oort/group
 cp -av allinone/etc/oort/* /etc/oort
@@ -123,7 +124,8 @@ cp -av /etc/oort/ring/group/groupstore.ring /etc/oort/ring/group/$RINGVER-groups
 cp -av /etc/oort/ring/group/groupstore.builder /etc/oort/ring/group/$RINGVER-groupstore.builder
 
 echo "Installing synd"
-cp -av packaging/root/usr/share/syndicate/systemd/synd.service /lib/systemd/system 
+cd $GOPATH/src/github.com/pandemicsyn/syndicate
+cp -av packaging/root/usr/share/syndicate/systemd/synd.service /lib/systemd/system
 go get github.com/pandemicsyn/syndicate/synd
 make install
 systemctl daemon-reload
@@ -132,7 +134,7 @@ echo "Installing oort-valued"
 go get github.com/pandemicsyn/oort/oort-valued
 go install github.com/pandemicsyn/oort/oort-valued
 cd $GOPATH/src/github.com/pandemicsyn/oort
-cp -av packaging/root/usr/share/oort/systemd/oort-valued.service /lib/systemd/system 
+cp -av packaging/root/usr/share/oort/systemd/oort-valued.service /lib/systemd/system
 echo "OORT_VALUE_SYNDICATE_OVERRIDE=127.0.0.1:8443" >> /etc/default/oort-valued
 systemctl daemon-reload
 
@@ -140,7 +142,7 @@ echo "Installing oort-groupd"
 go get github.com/pandemicsyn/oort/oort-groupd
 go install github.com/pandemicsyn/oort/oort-groupd
 cd $GOPATH/src/github.com/pandemicsyn/oort
-cp -av packaging/root/usr/share/oort/systemd/oort-groupd.service /lib/systemd/system 
+cp -av packaging/root/usr/share/oort/systemd/oort-groupd.service /lib/systemd/system
 echo "OORT_GROUP_SYNDICATE_OVERRIDE=127.0.0.1:8444" >> /etc/default/oort-groupd
 systemctl daemon-reload
 
@@ -161,7 +163,7 @@ go install github.com/creiht/formic/cfswrap
 ln -sf $GOPATH/bin/cfswrap /sbin/mount.cfs
 
 
-# Adding some helpful git stuff to the .bashrc 
+# Adding some helpful git stuff to the .bashrc
 if [ "$FANCYPROMPT" = "yes" ]; then
     echo "" >> ~/.bashrc
     echo "# Added to show git branches" >> ~/.bashrc
@@ -187,7 +189,7 @@ if [ "$STABLEDEPLOY" = "yes" ]; then
     fi
 fi
 
-echo 
+echo
 echo "To start services run:"
 echo "systemctl start synd"
 echo "systemctl start oort-valued"
@@ -200,4 +202,3 @@ echo "mkdir -p /mnt/fsdrive"
 echo "mount -t cfs  iad3://cfsteam/allinone/ /mnt/fsdrive -o host=localhost:8445"
 echo ""
 echo "If you plan on using *THIS* session and to get the git enhanced prompt make sure to source ~/.bashrc to load path changes"
-
