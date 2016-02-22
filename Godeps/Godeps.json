@@ -117,51 +117,56 @@
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/cmdctrl",
-			"Rev": "643e6bf3b04e769c64467f1618992aed69c7b943"
+			"Rev": "c22d49b76551d90ea4ee54a08eeb8d2a96339c22"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/cmdctrl/api",
-			"Rev": "643e6bf3b04e769c64467f1618992aed69c7b943"
+			"Rev": "c22d49b76551d90ea4ee54a08eeb8d2a96339c22"
+		},
+		{
+			"ImportPath": "github.com/pandemicsyn/oort/api",
+			"Comment": "qa-0.0.1-73-ge8e1ef4",
+			"Rev": "e8e1ef405840d1e91de6c53ae522f8a01803d05c"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api/groupproto",
-			"Comment": "qa-0.0.1-69-gf50b7de",
-			"Rev": "f50b7de77df5b96319e189b19a85157214b4a689"
+			"Comment": "qa-0.0.1-73-ge8e1ef4",
+			"Rev": "e8e1ef405840d1e91de6c53ae522f8a01803d05c"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api/proto",
-			"Comment": "qa-0.0.1-69-gf50b7de",
-			"Rev": "f50b7de77df5b96319e189b19a85157214b4a689"
+			"Comment": "qa-0.0.1-73-ge8e1ef4",
+			"Rev": "e8e1ef405840d1e91de6c53ae522f8a01803d05c"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api/valueproto",
-			"Comment": "qa-0.0.1-69-gf50b7de",
-			"Rev": "f50b7de77df5b96319e189b19a85157214b4a689"
+			"Comment": "qa-0.0.1-73-ge8e1ef4",
+			"Rev": "e8e1ef405840d1e91de6c53ae522f8a01803d05c"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/oort",
-			"Comment": "qa-0.0.1-69-gf50b7de",
-			"Rev": "f50b7de77df5b96319e189b19a85157214b4a689"
+			"Comment": "qa-0.0.1-73-ge8e1ef4",
+			"Rev": "e8e1ef405840d1e91de6c53ae522f8a01803d05c"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/oortstore",
-			"Comment": "qa-0.0.1-69-gf50b7de",
-			"Rev": "f50b7de77df5b96319e189b19a85157214b4a689"
+			"Comment": "qa-0.0.1-73-ge8e1ef4",
+			"Rev": "e8e1ef405840d1e91de6c53ae522f8a01803d05c"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/syndicate/api/proto",
-			"Comment": "stable-0.0.3-27-g2f00176",
-			"Rev": "2f00176e52532bc74edc663a17451371f37993cd"
+			"Comment": "stable-0.0.3-28-gbbeccb7",
+			"Rev": "bbeccb70519bbe789a26aa78d8fbbd6c0747754a"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/syndicate/syndicate",
-			"Comment": "stable-0.0.3-27-g2f00176",
-			"Rev": "2f00176e52532bc74edc663a17451371f37993cd"
+			"Comment": "stable-0.0.3-28-gbbeccb7",
+			"Rev": "bbeccb70519bbe789a26aa78d8fbbd6c0747754a"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/syndicate/utils/srvconf",
-			"Comment": "stable-0.0.3-27-g2f00176",
-			"Rev": "2f00176e52532bc74edc663a17451371f37993cd"
+			"Comment": "stable-0.0.3-28-gbbeccb7",
+			"Rev": "bbeccb70519bbe789a26aa78d8fbbd6c0747754a"
 		},
 		{
 			"ImportPath": "github.com/peterh/liner",
