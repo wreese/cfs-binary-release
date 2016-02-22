@@ -130,8 +130,8 @@ type groupWriteReq struct {
 	keyA uint64
 	keyB uint64
 
-	nameKeyA uint64
-	nameKeyB uint64
+	childKeyA uint64
+	childKeyB uint64
 
 	timestampbits uint64
 	value         []byte
@@ -154,7 +154,7 @@ type groupTOCBlock struct {
 
 type groupLocBlock interface {
 	timestampnano() int64
-	read(keyA uint64, keyB uint64, nameKeyA uint64, nameKeyB uint64, timestampbits uint64, offset uint32, length uint32, value []byte) (uint64, []byte, error)
+	read(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64, timestampbits uint64, offset uint32, length uint32, value []byte) (uint64, []byte, error)
 	close() error
 }
 
@@ -232,8 +232,8 @@ func NewGroupStore(c *GroupStoreConfig) (GroupStore, chan error) {
 	return store, store.restartChan
 }
 
-func (store *defaultGroupStore) ValueCap() uint32 {
-	return store.valueCap
+func (store *defaultGroupStore) ValueCap() (uint32, error) {
+	return store.valueCap, nil
 }
 
 func (store *defaultGroupStore) Startup() error {
@@ -331,11 +331,11 @@ func (store *defaultGroupStore) Startup() error {
 	return nil
 }
 
-func (store *defaultGroupStore) Shutdown() {
+func (store *defaultGroupStore) Shutdown() error {
 	store.runningLock.Lock()
 	if store.running != 1 { // running
 		store.runningLock.Unlock()
-		return
+		return nil
 	}
 	wg := &sync.WaitGroup{}
 	for i, f := range []func(){
@@ -374,10 +374,12 @@ func (store *defaultGroupStore) Shutdown() {
 	store.shutdownChan = nil
 	store.running = 0 // not running
 	store.runningLock.Unlock()
+	return nil
 }
 
-func (store *defaultGroupStore) EnableWrites() {
+func (store *defaultGroupStore) EnableWrites() error {
 	store.enableWrites(true)
+	return nil
 }
 
 func (store *defaultGroupStore) enableWrites(userCall bool) {
@@ -391,8 +393,9 @@ func (store *defaultGroupStore) enableWrites(userCall bool) {
 	store.disableEnableWritesLock.Unlock()
 }
 
-func (store *defaultGroupStore) DisableWrites() {
+func (store *defaultGroupStore) DisableWrites() error {
 	store.disableWrites(true)
+	return nil
 }
 
 func (store *defaultGroupStore) disableWrites(userCall bool) {
@@ -405,69 +408,72 @@ func (store *defaultGroupStore) disableWrites(userCall bool) {
 	}
 	store.disableEnableWritesLock.Unlock()
 }
-func (store *defaultGroupStore) Flush() {
+func (store *defaultGroupStore) Flush() error {
 	for _, c := range store.pendingWriteReqChans {
 		c <- flushGroupWriteReq
 	}
 	<-store.flushedChan
+	return nil
 }
 
-func (store *defaultGroupStore) Lookup(keyA uint64, keyB uint64, nameKeyA uint64, nameKeyB uint64) (int64, uint32, error) {
+func (store *defaultGroupStore) Lookup(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64) (int64, uint32, error) {
 	atomic.AddInt32(&store.lookups, 1)
-	timestampbits, _, length, err := store.lookup(keyA, keyB, nameKeyA, nameKeyB)
+	timestampbits, _, length, err := store.lookup(keyA, keyB, childKeyA, childKeyB)
 	if err != nil {
 		atomic.AddInt32(&store.lookupErrors, 1)
 	}
 	return int64(timestampbits >> _TSB_UTIL_BITS), length, err
 }
 
-func (store *defaultGroupStore) lookup(keyA uint64, keyB uint64, nameKeyA uint64, nameKeyB uint64) (uint64, uint32, uint32, error) {
-	timestampbits, id, _, length := store.locmap.Get(keyA, keyB, nameKeyA, nameKeyB)
+func (store *defaultGroupStore) lookup(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64) (uint64, uint32, uint32, error) {
+	timestampbits, id, _, length := store.locmap.Get(keyA, keyB, childKeyA, childKeyB)
 	if id == 0 || timestampbits&_TSB_DELETION != 0 {
 		return timestampbits, id, 0, ErrNotFound
 	}
 	return timestampbits, id, length, nil
 }
 
-func (store *defaultGroupStore) LookupGroup(keyA uint64, keyB uint64) []LookupGroupItem {
+func (store *defaultGroupStore) LookupGroup(keyA uint64, keyB uint64) ([]LookupGroupItem, error) {
+	// Returned []LookupGroupItem is not a []* for less garbage collection and
+	// is likely fine most use cases.
 	atomic.AddInt32(&store.lookupGroups, 1)
 	items := store.locmap.GetGroup(keyA, keyB)
 	if len(items) == 0 {
-		return nil
+		return nil, nil
 	}
 	rv := make([]LookupGroupItem, len(items))
 	i := 0
 	for _, item := range items {
 		if item.Timestamp&_TSB_DELETION == 0 {
-			rv[i].NameKeyA = item.NameKeyA
-			rv[i].NameKeyB = item.NameKeyB
+			rv[i].ChildKeyA = item.ChildKeyA
+			rv[i].ChildKeyB = item.ChildKeyB
 			rv[i].TimestampMicro = int64(item.Timestamp >> _TSB_UTIL_BITS)
 			rv[i].Length = item.Length
 			i++
 		}
 	}
 	atomic.AddInt32(&store.lookupGroupItems, int32(i))
-	return rv[:i]
+	return rv[:i], nil
 }
 
-func (store *defaultGroupStore) Read(keyA uint64, keyB uint64, nameKeyA uint64, nameKeyB uint64, value []byte) (int64, []byte, error) {
+func (store *defaultGroupStore) Read(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64, value []byte) (int64, []byte, error) {
 	atomic.AddInt32(&store.reads, 1)
-	timestampbits, value, err := store.read(keyA, keyB, nameKeyA, nameKeyB, value)
+	timestampbits, value, err := store.read(keyA, keyB, childKeyA, childKeyB, value)
 	if err != nil {
 		atomic.AddInt32(&store.readErrors, 1)
 	}
 	return int64(timestampbits >> _TSB_UTIL_BITS), value, err
 }
 
-func (store *defaultGroupStore) read(keyA uint64, keyB uint64, nameKeyA uint64, nameKeyB uint64, value []byte) (uint64, []byte, error) {
-	timestampbits, id, offset, length := store.locmap.Get(keyA, keyB, nameKeyA, nameKeyB)
+func (store *defaultGroupStore) read(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64, value []byte) (uint64, []byte, error) {
+	timestampbits, id, offset, length := store.locmap.Get(keyA, keyB, childKeyA, childKeyB)
 	if id == 0 || timestampbits&_TSB_DELETION != 0 || timestampbits&_TSB_LOCAL_REMOVAL != 0 {
 		return timestampbits, value, ErrNotFound
 	}
-	return store.locBlock(id).read(keyA, keyB, nameKeyA, nameKeyB, timestampbits, offset, length, value)
+	return store.locBlock(id).read(keyA, keyB, childKeyA, childKeyB, timestampbits, offset, length, value)
 }
 
-func (store *defaultGroupStore) Write(keyA uint64, keyB uint64, nameKeyA uint64, nameKeyB uint64, timestampmicro int64, value []byte) (int64, error) {
+func (store *defaultGroupStore) Write(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64, timestampmicro int64, value []byte) (int64, error) {
 	atomic.AddInt32(&store.writes, 1)
 	if timestampmicro < TIMESTAMPMICRO_MIN {
 		atomic.AddInt32(&store.writeErrors, 1)
@@ -477,7 +483,7 @@ func (store *defaultGroupStore) Write(keyA uint64, keyB uint64, nameKeyA uint64,
 		atomic.AddInt32(&store.writeErrors, 1)
 		return 0, fmt.Errorf("timestamp %d > %d", timestampmicro, TIMESTAMPMICRO_MAX)
 	}
-	timestampbits, err := store.write(keyA, keyB, nameKeyA, nameKeyB, uint64(timestampmicro)<<_TSB_UTIL_BITS, value, false)
+	timestampbits, err := store.write(keyA, keyB, childKeyA, childKeyB, uint64(timestampmicro)<<_TSB_UTIL_BITS, value, false)
 	if err != nil {
 		atomic.AddInt32(&store.writeErrors, 1)
 	} else if timestampmicro <= int64(timestampbits>>_TSB_UTIL_BITS) {
@@ -486,14 +492,14 @@ func (store *defaultGroupStore) Write(keyA uint64, keyB uint64, nameKeyA uint64,
 	return int64(timestampbits >> _TSB_UTIL_BITS), err
 }
 
-func (store *defaultGroupStore) write(keyA uint64, keyB uint64, nameKeyA uint64, nameKeyB uint64, timestampbits uint64, value []byte, internal bool) (uint64, error) {
+func (store *defaultGroupStore) write(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64, timestampbits uint64, value []byte, internal bool) (uint64, error) {
 	i := int(keyA>>1) % len(store.freeWriteReqChans)
 	writeReq := <-store.freeWriteReqChans[i]
 	writeReq.keyA = keyA
 	writeReq.keyB = keyB
 
-	writeReq.nameKeyA = nameKeyA
-	writeReq.nameKeyB = nameKeyB
+	writeReq.childKeyA = childKeyA
+	writeReq.childKeyB = childKeyB
 
 	writeReq.timestampbits = timestampbits
 	writeReq.value = value
@@ -510,7 +516,7 @@ func (store *defaultGroupStore) write(keyA uint64, keyB uint64, nameKeyA uint64,
 	return ptimestampbits, err
 }
 
-func (store *defaultGroupStore) Delete(keyA uint64, keyB uint64, nameKeyA uint64, nameKeyB uint64, timestampmicro int64) (int64, error) {
+func (store *defaultGroupStore) Delete(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64, timestampmicro int64) (int64, error) {
 	atomic.AddInt32(&store.deletes, 1)
 	if timestampmicro < TIMESTAMPMICRO_MIN {
 		atomic.AddInt32(&store.deleteErrors, 1)
@@ -520,7 +526,7 @@ func (store *defaultGroupStore) Delete(keyA uint64, keyB uint64, nameKeyA uint64
 		atomic.AddInt32(&store.deleteErrors, 1)
 		return 0, fmt.Errorf("timestamp %d > %d", timestampmicro, TIMESTAMPMICRO_MAX)
 	}
-	ptimestampbits, err := store.write(keyA, keyB, nameKeyA, nameKeyB, (uint64(timestampmicro)<<_TSB_UTIL_BITS)|_TSB_DELETION, nil, true)
+	ptimestampbits, err := store.write(keyA, keyB, childKeyA, childKeyB, (uint64(timestampmicro)<<_TSB_UTIL_BITS)|_TSB_DELETION, nil, true)
 	if err != nil {
 		atomic.AddInt32(&store.deleteErrors, 1)
 	} else if timestampmicro <= int64(ptimestampbits>>_TSB_UTIL_BITS) {
@@ -592,8 +598,8 @@ func (store *defaultGroupStore) memClearer(freeableMemBlockChan chan *groupMemBl
 
 			keyA := binary.BigEndian.Uint64(memBlock.toc[memBlockTOCOffset:])
 			keyB := binary.BigEndian.Uint64(memBlock.toc[memBlockTOCOffset+8:])
-			nameKeyA := binary.BigEndian.Uint64(memBlock.toc[memBlockTOCOffset+16:])
-			nameKeyB := binary.BigEndian.Uint64(memBlock.toc[memBlockTOCOffset+24:])
+			childKeyA := binary.BigEndian.Uint64(memBlock.toc[memBlockTOCOffset+16:])
+			childKeyB := binary.BigEndian.Uint64(memBlock.toc[memBlockTOCOffset+24:])
 			timestampbits := binary.BigEndian.Uint64(memBlock.toc[memBlockTOCOffset+32:])
 
 			var blockID uint32
@@ -606,7 +612,7 @@ func (store *defaultGroupStore) memClearer(freeableMemBlockChan chan *groupMemBl
 				length = binary.BigEndian.Uint32(memBlock.toc[memBlockTOCOffset+44:])
 
 			}
-			if store.locmap.Set(keyA, keyB, nameKeyA, nameKeyB, timestampbits, blockID, offset, length, true) > timestampbits {
+			if store.locmap.Set(keyA, keyB, childKeyA, childKeyB, timestampbits, blockID, offset, length, true) > timestampbits {
 				continue
 			}
 			if tb != nil && tbOffset+_GROUP_FILE_ENTRY_SIZE > cap(tb.data) {
@@ -625,8 +631,8 @@ func (store *defaultGroupStore) memClearer(freeableMemBlockChan chan *groupMemBl
 
 			binary.BigEndian.PutUint64(tbd, keyA)
 			binary.BigEndian.PutUint64(tbd[8:], keyB)
-			binary.BigEndian.PutUint64(tbd[16:], nameKeyA)
-			binary.BigEndian.PutUint64(tbd[24:], nameKeyB)
+			binary.BigEndian.PutUint64(tbd[16:], childKeyA)
+			binary.BigEndian.PutUint64(tbd[24:], childKeyB)
 			binary.BigEndian.PutUint64(tbd[32:], timestampbits)
 			binary.BigEndian.PutUint32(tbd[40:], offset)
 			binary.BigEndian.PutUint32(tbd[44:], length)
@@ -701,14 +707,14 @@ func (store *defaultGroupStore) memWriter(pendingWriteReqChan chan *groupWriteRe
 				memBlock.values[i] = 0
 			}
 		}
-		ptimestampbits := store.locmap.Set(writeReq.keyA, writeReq.keyB, writeReq.nameKeyA, writeReq.nameKeyB, writeReq.timestampbits & ^uint64(_TSB_COMPACTION_REWRITE), memBlock.id, uint32(memBlockMemOffset), uint32(length), writeReq.timestampbits&_TSB_COMPACTION_REWRITE != 0)
+		ptimestampbits := store.locmap.Set(writeReq.keyA, writeReq.keyB, writeReq.childKeyA, writeReq.childKeyB, writeReq.timestampbits & ^uint64(_TSB_COMPACTION_REWRITE), memBlock.id, uint32(memBlockMemOffset), uint32(length), writeReq.timestampbits&_TSB_COMPACTION_REWRITE != 0)
 		if ptimestampbits < writeReq.timestampbits {
 			memBlock.toc = memBlock.toc[:memBlockTOCOffset+_GROUP_FILE_ENTRY_SIZE]
 
 			binary.BigEndian.PutUint64(memBlock.toc[memBlockTOCOffset:], writeReq.keyA)
 			binary.BigEndian.PutUint64(memBlock.toc[memBlockTOCOffset+8:], writeReq.keyB)
-			binary.BigEndian.PutUint64(memBlock.toc[memBlockTOCOffset+16:], writeReq.nameKeyA)
-			binary.BigEndian.PutUint64(memBlock.toc[memBlockTOCOffset+24:], writeReq.nameKeyB)
+			binary.BigEndian.PutUint64(memBlock.toc[memBlockTOCOffset+16:], writeReq.childKeyA)
+			binary.BigEndian.PutUint64(memBlock.toc[memBlockTOCOffset+24:], writeReq.childKeyB)
 			binary.BigEndian.PutUint64(memBlock.toc[memBlockTOCOffset+32:], writeReq.timestampbits & ^uint64(_TSB_COMPACTION_REWRITE))
 			binary.BigEndian.PutUint32(memBlock.toc[memBlockTOCOffset+40:], uint32(memBlockMemOffset))
 			binary.BigEndian.PutUint32(memBlock.toc[memBlockTOCOffset+44:], uint32(length))
@@ -981,11 +987,11 @@ func (store *defaultGroupStore) recovery() error {
 						wr.BlockID = 0
 					}
 					if store.logDebugOn {
-						if store.locmap.Set(wr.KeyA, wr.KeyB, wr.NameKeyA, wr.NameKeyB, wr.TimestampBits, wr.BlockID, wr.Offset, wr.Length, true) < wr.TimestampBits {
+						if store.locmap.Set(wr.KeyA, wr.KeyB, wr.ChildKeyA, wr.ChildKeyB, wr.TimestampBits, wr.BlockID, wr.Offset, wr.Length, true) < wr.TimestampBits {
 							atomic.AddInt64(&causedChangeCount, 1)
 						}
 					} else {
-						store.locmap.Set(wr.KeyA, wr.KeyB, wr.NameKeyA, wr.NameKeyB, wr.TimestampBits, wr.BlockID, wr.Offset, wr.Length, true)
+						store.locmap.Set(wr.KeyA, wr.KeyB, wr.ChildKeyA, wr.ChildKeyB, wr.TimestampBits, wr.BlockID, wr.Offset, wr.Length, true)
 					}
 				}
 				freeBatchChan <- batch
@@ -1048,8 +1054,13 @@ func (store *defaultGroupStore) recovery() error {
 	spindown()
 	if store.logDebugOn {
 		dur := time.Now().Sub(start)
-		stats := store.Stats(false).(*GroupStoreStats)
-		store.logDebug("recovery: %d key locations loaded in %s, %.0f/s; %d caused change; %d resulting locations referencing %d bytes.", fromDiskCount, dur, float64(fromDiskCount)/(float64(dur)/float64(time.Second)), causedChangeCount, stats.Values, stats.ValueBytes)
+		stringerStats, err := store.Stats(false)
+		if err != nil {
+			store.logDebug("recovery: stats error: %s", err)
+		} else {
+			stats := stringerStats.(*GroupStoreStats)
+			store.logDebug("recovery: %d key locations loaded in %s, %.0f/s; %d caused change; %d resulting locations referencing %d bytes.", fromDiskCount, dur, float64(fromDiskCount)/(float64(dur)/float64(time.Second)), causedChangeCount, stats.Values, stats.ValueBytes)
+		}
 	}
 	if len(compactNames) > 0 {
 		store.logDebug("recovery: secondary recovery started for %d files.", len(compactNames))

@@ -186,10 +186,10 @@ message ReadlinkResponse {
 
 // Getxattr
 message GetxattrRequest {
-    uint64 inode = 1;
-    string name = 2;
-    uint32  size = 3;
-    uint32  position = 4;
+    uint64 inode    = 1;
+    string name     = 2;
+    uint32 size     = 3;
+    uint32 position = 4;
 }
 message GetxattrResponse {
     bytes xattr = 1;
@@ -197,19 +197,19 @@ message GetxattrResponse {
 
 // Setxattr
 message SetxattrRequest {
-    uint64 inode = 1;
-    string name = 2;
-    bytes value = 3;
+    uint64 inode    = 1;
+    string name     = 2;
+    bytes  value    = 3;
     uint32 position = 4;
-    uint32 flags = 5;
+    uint32 flags    = 5;
 }
 message SetxattrResponse {}
 
 // Listxattr
 message ListxattrRequest {
-    uint64 inode = 1;
-    uint32  size = 2;
-    uint32  position = 3;
+    uint64 inode    = 1;
+    uint32 size     = 2;
+    uint32 position = 3;
 }
 message ListxattrResponse {
     bytes xattr = 1;
@@ -218,16 +218,16 @@ message ListxattrResponse {
 // Removexattr
 message RemovexattrRequest {
     uint64 inode = 1;
-    string name = 2;
+    string name  = 2;
 }
 message RemovexattrResponse {}
 
 // Rename
 message RenameRequest {
-    uint64 oldParent  = 1;
-    uint64 newParent  = 2;
-    string oldName = 3;
-    string newName = 4;
+    uint64 oldParent = 1;
+    uint64 newParent = 2;
+    string oldName   = 3;
+    string newName   = 4;
 }
 message RenameResponse {}
 
@@ -265,6 +265,14 @@ message InodeEntry {
 // This is used for the serialization of dir info in the group score
 // This is *not* used for api calls
 message DirEntry {
-    string name               = 1;
-    bytes  id                 = 2;
+    string name = 1;
+    bytes  id   = 2;
+}
+
+// FileBlock
+// This is used for storing blocks in value store
+// This is *not* used for api calls
+message FileBlock {
+    bytes  data     = 1;
+    uint32 checksum = 2;
 }
