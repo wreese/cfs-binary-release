@@ -12,6 +12,7 @@ import (
 
 	"github.com/gholt/ring"
 	"github.com/gholt/store"
+	"github.com/pandemicsyn/oort/api/proto"
 	"github.com/pandemicsyn/oort/api/valueproto"
 	"github.com/pandemicsyn/oort/oort"
 	"golang.org/x/net/context"
@@ -64,6 +65,10 @@ func NewValueStore(oort *oort.Server) (*OortValueStore, error) {
 	if s.TCPMsgRingConfig.UseTLS {
 		log.Println("TCPMsgRing using TLS")
 	}
+	if s.TCPMsgRingConfig.AddressIndex == 0 {
+		s.TCPMsgRingConfig.AddressIndex = 1
+		log.Println("TCPMsgRing using address index 1")
+	}
 	cert, err := tls.LoadX509KeyPair(s.C.CertFile, s.C.KeyFile)
 	if err != nil {
 		return s, err
@@ -104,7 +109,12 @@ func (s *OortValueStore) start() {
 			time.Sleep(time.Minute)
 			tcpMsgRingStats = t.Stats(false)
 			log.Printf("%v\n", tcpMsgRingStats)
-			log.Printf("%s\n", s.vs.Stats(false))
+			stats, err := s.vs.Stats(false)
+			if err != nil {
+				log.Printf("stats error: %s\n", err)
+			} else {
+				log.Printf("%s\n", stats)
+			}
 		}
 	}(s.t)
 }
@@ -119,10 +129,10 @@ func (s *OortValueStore) UpdateRing(ring ring.Ring) {
 func (s *OortValueStore) Write(ctx context.Context, req *valueproto.WriteRequest) (*valueproto.WriteResponse, error) {
 	resp := valueproto.WriteResponse{}
 	var err error
-	resp.Tsm, err = s.vs.Write(req.KeyA, req.KeyB, req.Tsm, req.Value)
+	resp.TimestampMicro, err = s.vs.Write(req.KeyA, req.KeyB, req.TimestampMicro, req.Value)
 	if err != nil {
 		log.Println(err)
-		resp.Err = err.Error()
+		resp.Err = proto.TranslateError(err)
 	}
 	return &resp, nil
 }
@@ -138,10 +148,10 @@ func (s *OortValueStore) StreamWrite(stream valueproto.ValueStore_StreamWriteSer
 			return err
 		}
 		resp.Reset()
-		resp.Tsm, err = s.vs.Write(req.KeyA, req.KeyB, req.Tsm, req.Value)
+		resp.TimestampMicro, err = s.vs.Write(req.KeyA, req.KeyB, req.TimestampMicro, req.Value)
 		if err != nil {
 			log.Println(err)
-			resp.Err = err.Error()
+			resp.Err = proto.TranslateError(err)
 		}
 		if err := stream.Send(&resp); err != nil {
 			return err
@@ -152,9 +162,9 @@ func (s *OortValueStore) StreamWrite(stream valueproto.ValueStore_StreamWriteSer
 func (s *OortValueStore) Read(ctx context.Context, req *valueproto.ReadRequest) (*valueproto.ReadResponse, error) {
 	resp := valueproto.ReadResponse{}
 	var err error
-	resp.Tsm, resp.Value, err = s.vs.Read(req.KeyA, req.KeyB, resp.Value)
+	resp.TimestampMicro, resp.Value, err = s.vs.Read(req.KeyA, req.KeyB, resp.Value)
 	if err != nil {
-		resp.Err = err.Error()
+		resp.Err = proto.TranslateError(err)
 	}
 	return &resp, nil
 }
@@ -171,10 +181,10 @@ func (s *OortValueStore) StreamRead(stream valueproto.ValueStore_StreamReadServe
 			return err
 		}
 		resp.Reset()
-		resp.Tsm, resp.Value, err = s.vs.Read(req.KeyA, req.KeyB, resp.Value)
+		resp.TimestampMicro, resp.Value, err = s.vs.Read(req.KeyA, req.KeyB, resp.Value)
 		if err != nil {
 			log.Println(err)
-			resp.Err = err.Error()
+			resp.Err = proto.TranslateError(err)
 		}
 		if err := stream.Send(&resp); err != nil {
 			return err
@@ -185,9 +195,9 @@ func (s *OortValueStore) StreamRead(stream valueproto.ValueStore_StreamReadServe
 func (s *OortValueStore) Lookup(ctx context.Context, req *valueproto.LookupRequest) (*valueproto.LookupResponse, error) {
 	resp := valueproto.LookupResponse{}
 	var err error
-	resp.Tsm, resp.Length, err = s.vs.Lookup(req.KeyA, req.KeyB)
+	resp.TimestampMicro, resp.Length, err = s.vs.Lookup(req.KeyA, req.KeyB)
 	if err != nil {
-		resp.Err = err.Error()
+		resp.Err = proto.TranslateError(err)
 	}
 	return &resp, nil
 }
@@ -203,10 +213,10 @@ func (s *OortValueStore) StreamLookup(stream valueproto.ValueStore_StreamLookupS
 			return err
 		}
 		resp.Reset()
-		resp.Tsm, resp.Length, err = s.vs.Lookup(req.KeyA, req.KeyB)
+		resp.TimestampMicro, resp.Length, err = s.vs.Lookup(req.KeyA, req.KeyB)
 		if err != nil {
 			log.Println(err)
-			resp.Err = err.Error()
+			resp.Err = proto.TranslateError(err)
 		}
 		if err := stream.Send(&resp); err != nil {
 			return err
@@ -217,9 +227,9 @@ func (s *OortValueStore) StreamLookup(stream valueproto.ValueStore_StreamLookupS
 func (s *OortValueStore) Delete(ctx context.Context, req *valueproto.DeleteRequest) (*valueproto.DeleteResponse, error) {
 	resp := valueproto.DeleteResponse{}
 	var err error
-	resp.Tsm, err = s.vs.Delete(req.KeyA, req.KeyB, req.Tsm)
+	resp.TimestampMicro, err = s.vs.Delete(req.KeyA, req.KeyB, req.TimestampMicro)
 	if err != nil {
-		resp.Err = err.Error()
+		resp.Err = proto.TranslateError(err)
 	}
 	return &resp, nil
 }
@@ -235,10 +245,10 @@ func (s *OortValueStore) StreamDelete(stream valueproto.ValueStore_StreamDeleteS
 			return err
 		}
 		resp.Reset()
-		resp.Tsm, err = s.vs.Delete(req.KeyA, req.KeyB, req.Tsm)
+		resp.TimestampMicro, err = s.vs.Delete(req.KeyA, req.KeyB, req.TimestampMicro)
 		if err != nil {
 			log.Println(err)
-			resp.Err = err.Error()
+			resp.Err = proto.TranslateError(err)
 		}
 		if err := stream.Send(&resp); err != nil {
 			return err
@@ -274,7 +284,12 @@ func (s *OortValueStore) Stop() {
 }
 
 func (s *OortValueStore) Stats() []byte {
-	return []byte(s.vs.Stats(true).String())
+	stats, err := s.vs.Stats(true)
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
+	return []byte(stats.String())
 }
 
 func (s *OortValueStore) ListenAndServe() {

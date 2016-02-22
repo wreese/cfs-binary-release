@@ -31,9 +31,9 @@ source /$USER/.bashrc
 if [ "$FANCYVIM" = "yes" ]; then
     echo "Performing fancy vim install"
     mkdir -p ~/.vim/autoload ~/.vim/bundle && curl -LSso ~/.vim/autoload/pathogen.vim https://tpo.pe/pathogen.vim
-    apt-get install -y --force-yes vim-youcompleteme
     go get golang.org/x/tools/cmd/goimports
     git clone https://github.com/fatih/vim-go.git ~/.vim/bundle/vim-go
+    git clone https://github.com/Shougo/neocomplete.vim.git ~/.vim/bundle/neocomplete.vim
     curl -o ~/.vimrc https://raw.githubusercontent.com/pandemicsyn/syndicate/master/allinone/.vimrc 
     go get github.com/nsf/gocode
     echo "Fancy VIM install complete. You may way want to open vim and run ':GoInstallBinaries' the first time you use it"
@@ -58,6 +58,9 @@ echo "Setting up the imporant bits..."
 go get google.golang.org/grpc
 go get github.com/golang/protobuf/proto
 go get github.com/golang/protobuf/protoc-gen-go
+go get github.com/gogo/protobuf/proto
+go get github.com/gogo/protobuf/protoc-gen-gogo
+go get github.com/gogo/protobuf/gogoproto
 go get github.com/tools/godep
 go install github.com/tools/godep
 

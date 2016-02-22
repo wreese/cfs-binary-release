@@ -3,6 +3,8 @@ package main
 import (
 	"crypto/tls"
 	"errors"
+	"hash"
+	"hash/crc32"
 	"io"
 	"log"
 	"os"
@@ -54,6 +56,7 @@ type OortFS struct {
 	gconn              *grpc.ClientConn
 	vclient            vp.ValueStoreClient
 	gclient            gp.GroupStoreClient
+	hasher             func() hash.Hash32
 	sync.RWMutex
 }
 
@@ -68,6 +71,7 @@ func NewOortFS(vaddr, gaddr string, insecureSkipVerify bool, grpcOpts ...grpc.Di
 			InsecureSkipVerify: insecureSkipVerify,
 		}),
 		insecureSkipVerify: insecureSkipVerify,
+		hasher:             crc32.NewIEEE,
 	}
 	o.gopts = append(o.gopts, grpc.WithTransportCredentials(o.gcreds))
 	o.vconn, err = grpc.Dial(o.vaddr, o.gopts...)
@@ -195,7 +199,7 @@ func (o *OortFS) writeValue(id, data []byte) error {
 		Value: data,
 	}
 	w.KeyA, w.KeyB = murmur3.Sum128(id)
-	w.Tsm = brimtime.TimeToUnixMicro(time.Now())
+	w.TimestampMicro = brimtime.TimeToUnixMicro(time.Now())
 	if err := stream.Send(w); err != nil {
 		return err
 	}
@@ -206,7 +210,7 @@ func (o *OortFS) writeValue(id, data []byte) error {
 	if err != nil {
 		return err
 	}
-	if res.Tsm > w.Tsm {
+	if res.TimestampMicro > w.TimestampMicro {
 		return ErrStoreHasNewerValue
 	}
 	return nil
@@ -215,13 +219,13 @@ func (o *OortFS) writeValue(id, data []byte) error {
 func (o *OortFS) deleteValue(id []byte) error {
 	r := &vp.DeleteRequest{}
 	r.KeyA, r.KeyB = murmur3.Sum128(id)
-	r.Tsm = brimtime.TimeToUnixMicro(time.Now())
+	r.TimestampMicro = brimtime.TimeToUnixMicro(time.Now())
 	ctx, _ := context.WithTimeout(context.Background(), time.Second*10)
 	_, err := o.vclient.Delete(ctx, r)
 	return err
 }
 
-func (o *OortFS) writeGroup(key, nameKey, value []byte) error {
+func (o *OortFS) writeGroup(key, childKey, value []byte) error {
 	stream, err := o.GetGroupWriteStream(context.Background())
 	defer stream.CloseSend()
 	if err != nil {
@@ -229,8 +233,8 @@ func (o *OortFS) writeGroup(key, nameKey, value []byte) error {
 	}
 	w := &gp.WriteRequest{}
 	w.KeyA, w.KeyB = murmur3.Sum128(key)
-	w.NameKeyA, w.NameKeyB = murmur3.Sum128(nameKey)
-	w.Tsm = brimtime.TimeToUnixMicro(time.Now())
+	w.ChildKeyA, w.ChildKeyB = murmur3.Sum128(childKey)
+	w.TimestampMicro = brimtime.TimeToUnixMicro(time.Now())
 	w.Value = value
 	if err := stream.Send(w); err != nil {
 		return err
@@ -239,18 +243,18 @@ func (o *OortFS) writeGroup(key, nameKey, value []byte) error {
 	if err != io.EOF && err != nil {
 		return err
 	}
-	if wres.Tsm > w.Tsm {
+	if wres.TimestampMicro > w.TimestampMicro {
 		return ErrStoreHasNewerValue
 	}
 	return nil
 }
 
-func (o *OortFS) readGroupItem(key, nameKey []byte) ([]byte, error) {
-	nameKeyA, nameKeyB := murmur3.Sum128(nameKey)
-	return o.readGroupItemByKey(key, nameKeyA, nameKeyB)
+func (o *OortFS) readGroupItem(key, childKey []byte) ([]byte, error) {
+	childKeyA, childKeyB := murmur3.Sum128(childKey)
+	return o.readGroupItemByKey(key, childKeyA, childKeyB)
 }
 
-func (o *OortFS) readGroupItemByKey(key []byte, nameKeyA, nameKeyB uint64) ([]byte, error) {
+func (o *OortFS) readGroupItemByKey(key []byte, childKeyA, childKeyB uint64) ([]byte, error) {
 	stream, err := o.GetGroupReadStream(context.Background())
 	defer stream.CloseSend()
 	if err != nil {
@@ -258,8 +262,8 @@ func (o *OortFS) readGroupItemByKey(key []byte, nameKeyA, nameKeyB uint64) ([]by
 	}
 	r := &gp.ReadRequest{}
 	r.KeyA, r.KeyB = murmur3.Sum128(key)
-	r.NameKeyA = nameKeyA
-	r.NameKeyB = nameKeyB
+	r.ChildKeyA = childKeyA
+	r.ChildKeyB = childKeyB
 	if err := stream.Send(r); err != nil {
 		return nil, err
 	}
@@ -275,7 +279,7 @@ func (o *OortFS) readGroupItemByKey(key []byte, nameKeyA, nameKeyB uint64) ([]by
 
 func (o *OortFS) readGroup(key []byte) ([]*gp.LookupGroupItem, error) {
 	r := &gp.LookupGroupRequest{}
-	r.A, r.B = murmur3.Sum128(key)
+	r.KeyA, r.KeyB = murmur3.Sum128(key)
 	ctx, _ := context.WithTimeout(context.Background(), time.Second*10)
 	lres, err := o.gclient.LookupGroup(ctx, r)
 	if err != nil {
@@ -285,11 +289,11 @@ func (o *OortFS) readGroup(key []byte) ([]*gp.LookupGroupItem, error) {
 	return lres.Items, nil
 }
 
-func (o *OortFS) deleteGroupItem(key, nameKey []byte) error {
+func (o *OortFS) deleteGroupItem(key, childKey []byte) error {
 	r := &gp.DeleteRequest{}
 	r.KeyA, r.KeyB = murmur3.Sum128(key)
-	r.NameKeyA, r.NameKeyB = murmur3.Sum128(nameKey)
-	r.Tsm = brimtime.TimeToUnixMicro(time.Now())
+	r.ChildKeyA, r.ChildKeyB = murmur3.Sum128(childKey)
+	r.TimestampMicro = brimtime.TimeToUnixMicro(time.Now())
 	ctx, _ := context.WithTimeout(context.Background(), time.Second*10)
 	_, err := o.gclient.Delete(ctx, r)
 	return err
@@ -297,11 +301,31 @@ func (o *OortFS) deleteGroupItem(key, nameKey []byte) error {
 
 // FileService methods
 func (o *OortFS) GetChunk(id []byte) ([]byte, error) {
-	return o.readValue(id)
+	b, err := o.readValue(id)
+	if err != nil {
+		return nil, err
+	}
+	fb := &pb.FileBlock{}
+	err = proto.Unmarshal(b, fb)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: Validate checksum and handle errors
+	return fb.Data, nil
 }
 
 func (o *OortFS) WriteChunk(id, data []byte) error {
-	return o.writeValue(id, data)
+	crc := o.hasher()
+	crc.Write(data)
+	fb := &pb.FileBlock{
+		Data:     data,
+		Checksum: crc.Sum32(),
+	}
+	b, err := proto.Marshal(fb)
+	if err != nil {
+		return err
+	}
+	return o.writeValue(id, b)
 }
 
 func (o *OortFS) GetAttr(id []byte) (*pb.Attr, error) {
@@ -460,7 +484,7 @@ func (o *OortFS) ReadDirAll(id []byte) (*pb.ReadDirAllResponse, error) {
 	lookup.KeyA, lookup.KeyB = murmur3.Sum128(id)
 	for _, key := range items {
 		// lookup the key in the group to get the id
-		b, err := o.readGroupItemByKey(id, key.NameKeyA, key.NameKeyB)
+		b, err := o.readGroupItemByKey(id, key.ChildKeyA, key.ChildKeyB)
 		if err != nil {
 			// TODO: Needs beter error handling
 			log.Println("Error with lookup: ", err)

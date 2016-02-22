@@ -48,7 +48,7 @@ func GetHardwareProfile() (*pb.HardwareProfile, error) {
 		return &pb.HardwareProfile{}, err
 	}
 	hw := &pb.HardwareProfile{
-		Disks:    make([]*pb.Disk, len(d)),
+		Disks:    make([]*pb.Disk, 0),
 		Cpus:     int64(runtime.NumCPU()),
 		Memtotal: v.Total,
 		Memfree:  v.Free,
@@ -58,12 +58,13 @@ func GetHardwareProfile() (*pb.HardwareProfile, error) {
 		if err != nil {
 			continue
 		}
-		hw.Disks[k] = &pb.Disk{
+		entry := &pb.Disk{
 			Path:   d[k].Mountpoint,
 			Device: d[k].Device,
+			Size:   usage.Total,
+			Used:   usage.Used,
 		}
-		hw.Disks[k].Size = usage.Total
-		hw.Disks[k].Used = usage.Used
+		hw.Disks = append(hw.Disks, entry)
 	}
 	return hw, nil
 }

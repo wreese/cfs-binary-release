@@ -8,6 +8,7 @@ import (
 	"golang.org/x/net/context"
 
 	pb "github.com/creiht/formic/proto"
+	"github.com/gogo/protobuf/proto"
 )
 
 // Minimal FileService for testing
@@ -294,4 +295,14 @@ func TestRead_Chunk(t *testing.T) {
 	if !bytes.Equal(data.Payload[10:], write2) {
 		t.Errorf("Expected read: '%s' received: '%s'", write2, data.Payload[10:])
 	}
+}
+
+func TestProtoWriteSize(t *testing.T) {
+	data := make([]byte, 64*1024)
+	block := &pb.FileBlock{
+		Data:     data,
+		Checksum: uint32(8),
+	}
+	b, _ := proto.Marshal(block)
+	fmt.Printf("Storing 64K and checksum in protobufs takes %d bytes.", len(b))
 }

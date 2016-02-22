@@ -33,7 +33,7 @@ var (
 )
 
 var (
-	InvalidTiers = errors.New("Invalid tiers provided")
+	InvalidTiers = errors.New("Tier0 already present in ring")
 	InvalidAddrs = errors.New("No valid addresses provided")
 )
 
@@ -46,6 +46,7 @@ type Config struct {
 	Port             int
 	MsgRingPort      int
 	CmdCtrlPort      int
+	CmdCtrlIndex     int
 	RingDir          string
 	CertFile         string
 	KeyFile          string
@@ -196,6 +197,9 @@ func (s *Server) parseConfig() {
 	if s.cfg.CmdCtrlPort == 0 {
 		log.Println("Config didn't specify cmdctrl port, using default:", DefaultCmdCtrlPort)
 		s.cfg.CmdCtrlPort = DefaultCmdCtrlPort
+	}
+	if s.cfg.CmdCtrlIndex == 0 {
+		log.Println("Using default CmdCtrlIndex: 0")
 	}
 	if s.cfg.RingDir == "" {
 		s.cfg.RingDir = filepath.Join(DefaultRingDir, s.servicename)
@@ -680,6 +684,7 @@ func (s *Server) RegisterNode(c context.Context, r *pb.RegisterRequest) (*pb.Nod
 			continue
 		}
 		if s.validNodeIP(i) {
+			addrs = append(addrs, fmt.Sprintf("%s:%d", i.String(), s.cfg.CmdCtrlPort))
 			addrs = append(addrs, fmt.Sprintf("%s:%d", i.String(), s.cfg.MsgRingPort))
 		}
 	}
@@ -712,8 +717,13 @@ func (s *Server) RegisterNode(c context.Context, r *pb.RegisterRequest) (*pb.Nod
 		}
 		log.Println("Node already in ring, sending localid:", addrid)
 		return &pb.NodeConfig{Localid: addrid, Ring: *s.rb}, nil
-	case !s.validTiers(r.Tiers):
-		return &pb.NodeConfig{}, InvalidTiers
+	case len(r.Tiers) == 0:
+		return &pb.NodeConfig{}, fmt.Errorf("No tier0 provided")
+	case len(r.Tiers) > 0:
+		log.Println("wtf not even")
+		if !s.validTiers(r.Tiers) {
+			return &pb.NodeConfig{}, InvalidTiers
+		}
 	}
 
 	var weight uint32
@@ -779,8 +789,7 @@ func (s *Server) RegisterNode(c context.Context, r *pb.RegisterRequest) (*pb.Nod
 		log.Println("Ring version is now:", s.r.Version())
 		return &pb.NodeConfig{}, fmt.Errorf("Unable to apply ring change during registration")
 	}
-	maddr, _ := ParseManagedNodeAddress(n.Address(0), s.cfg.CmdCtrlPort)
-	s.managedNodes[n.ID()], err = NewManagedNode(&ManagedNodeOpts{Address: maddr})
+	s.managedNodes[n.ID()], err = NewManagedNode(&ManagedNodeOpts{Address: n.Address(s.cfg.CmdCtrlIndex)})
 	//just log the error, we'll keep retrying to connect
 	if err != nil {
 		log.Printf("Error setting up new managed node %s: %s", n.Address(0), err.Error())

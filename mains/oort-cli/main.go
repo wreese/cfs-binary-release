@@ -95,13 +95,13 @@ func (c *Client) parseValueCmd(line string) (string, error) {
 		w := &vp.WriteRequest{}
 		w.KeyA, w.KeyB = murmur3.Sum128([]byte(sarg[0]))
 		w.Value = []byte(sarg[1])
-		w.Tsm = brimtime.TimeToUnixMicro(time.Now())
+		w.TimestampMicro = brimtime.TimeToUnixMicro(time.Now())
 		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 		res, err := c.vc.Write(ctx, w)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("WRITE TSM: %d\nTSM: %d", w.Tsm, res.Tsm), nil
+		return fmt.Sprintf("WRITE TIMESTAMPMICRO: %d\nTIMESTAMPMICRO: %d", w.TimestampMicro, res.TimestampMicro), nil
 	case "read":
 		r := &vp.ReadRequest{}
 		r.KeyA, r.KeyB = murmur3.Sum128([]byte(args))
@@ -110,17 +110,17 @@ func (c *Client) parseValueCmd(line string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("TSM: %d\nVALUE: %s", res.Tsm, res.Value), nil
+		return fmt.Sprintf("TIMESTAMPMICRO: %d\nVALUE: %s", res.TimestampMicro, res.Value), nil
 	case "delete":
 		d := &vp.DeleteRequest{}
 		d.KeyA, d.KeyB = murmur3.Sum128([]byte(args))
-		d.Tsm = brimtime.TimeToUnixMicro(time.Now())
+		d.TimestampMicro = brimtime.TimeToUnixMicro(time.Now())
 		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 		res, err := c.vc.Delete(ctx, d)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("TSM: %d", res.Tsm), nil
+		return fmt.Sprintf("TIMESTAMPMICRO: %d", res.TimestampMicro), nil
 	case "lookup":
 		l := &vp.LookupRequest{}
 		l.KeyA, l.KeyB = murmur3.Sum128([]byte(args))
@@ -129,7 +129,7 @@ func (c *Client) parseValueCmd(line string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("TSM: %d", res.Tsm), nil
+		return fmt.Sprintf("TIMESTAMPMICRO: %d", res.TimestampMicro), nil
 	case "mode":
 		if args == "value" {
 			return fmt.Sprintf("Already in value store mode"), nil
@@ -170,15 +170,15 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		}
 		w := &gp.WriteRequest{}
 		w.KeyA, w.KeyB = murmur3.Sum128([]byte(sarg[0]))
-		w.NameKeyA, w.NameKeyB = murmur3.Sum128([]byte(sarg[1]))
+		w.ChildKeyA, w.ChildKeyB = murmur3.Sum128([]byte(sarg[1]))
 		w.Value = []byte(sarg[2])
-		w.Tsm = brimtime.TimeToUnixMicro(time.Now())
+		w.TimestampMicro = brimtime.TimeToUnixMicro(time.Now())
 		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 		res, err := c.gc.Write(ctx, w)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("WRITE TSM: %d\nTSM: %d", w.Tsm, res.Tsm), nil
+		return fmt.Sprintf("WRITE TIMESTAMPMICRO: %d\nTIMESTAMPMICRO: %d", w.TimestampMicro, res.TimestampMicro), nil
 	case "write-hash":
 		sarg := strings.SplitN(args, " ", 4)
 		if len(sarg) < 4 {
@@ -186,23 +186,23 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		}
 		w := &gp.WriteRequest{}
 		w.KeyA, w.KeyB = murmur3.Sum128([]byte(sarg[0]))
-		namekeyA, err := strconv.ParseUint(sarg[1], 10, 64)
+		childKeyA, err := strconv.ParseUint(sarg[1], 10, 64)
 		if err != nil {
 			return "", err
 		}
-		namekeyB, err := strconv.ParseUint(sarg[2], 10, 64)
+		childKeyB, err := strconv.ParseUint(sarg[2], 10, 64)
 		if err != nil {
 			return "", err
 		}
-		w.NameKeyA, w.NameKeyB = namekeyA, namekeyB
+		w.ChildKeyA, w.ChildKeyB = childKeyA, childKeyB
 		w.Value = []byte(sarg[3])
-		w.Tsm = brimtime.TimeToUnixMicro(time.Now())
+		w.TimestampMicro = brimtime.TimeToUnixMicro(time.Now())
 		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 		res, err := c.gc.Write(ctx, w)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("WRITE TSM: %d\nTSM: %d", w.Tsm, res.Tsm), nil
+		return fmt.Sprintf("WRITE TIMESTAMPMICRO: %d\nTIMESTAMPMICRO: %d", w.TimestampMicro, res.TimestampMicro), nil
 	case "read":
 		sarg := strings.SplitN(args, " ", 2)
 		if len(sarg) < 2 {
@@ -210,13 +210,13 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		}
 		r := &gp.ReadRequest{}
 		r.KeyA, r.KeyB = murmur3.Sum128([]byte(sarg[0]))
-		r.NameKeyA, r.NameKeyB = murmur3.Sum128([]byte(sarg[1]))
+		r.ChildKeyA, r.ChildKeyB = murmur3.Sum128([]byte(sarg[1]))
 		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 		res, err := c.gc.Read(ctx, r)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("TSM: %d\nVALUE: %s", res.Tsm, res.Value), nil
+		return fmt.Sprintf("TIMESTAMPMICRO: %d\nVALUE: %s", res.TimestampMicro, res.Value), nil
 	case "read-hash":
 		sarg := strings.SplitN(args, " ", 3)
 		if len(sarg) < 3 {
@@ -224,21 +224,21 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		}
 		r := &gp.ReadRequest{}
 		r.KeyA, r.KeyB = murmur3.Sum128([]byte(sarg[0]))
-		namekeyA, err := strconv.ParseUint(sarg[1], 10, 64)
+		childKeyA, err := strconv.ParseUint(sarg[1], 10, 64)
 		if err != nil {
 			return "", err
 		}
-		namekeyB, err := strconv.ParseUint(sarg[2], 10, 64)
+		childKeyB, err := strconv.ParseUint(sarg[2], 10, 64)
 		if err != nil {
 			return "", err
 		}
-		r.NameKeyA, r.NameKeyB = namekeyA, namekeyB
+		r.ChildKeyA, r.ChildKeyB = childKeyA, childKeyB
 		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 		res, err := c.gc.Read(ctx, r)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("TSM: %d\nVALUE: %s", res.Tsm, res.Value), nil
+		return fmt.Sprintf("TIMESTAMPMICRO: %d\nVALUE: %s", res.TimestampMicro, res.Value), nil
 	case "delete":
 		sarg := strings.SplitN(args, " ", 2)
 		if len(sarg) < 2 {
@@ -246,14 +246,14 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		}
 		d := &gp.DeleteRequest{}
 		d.KeyA, d.KeyB = murmur3.Sum128([]byte(sarg[0]))
-		d.NameKeyA, d.NameKeyB = murmur3.Sum128([]byte(sarg[1]))
-		d.Tsm = brimtime.TimeToUnixMicro(time.Now())
+		d.ChildKeyA, d.ChildKeyB = murmur3.Sum128([]byte(sarg[1]))
+		d.TimestampMicro = brimtime.TimeToUnixMicro(time.Now())
 		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 		res, err := c.gc.Delete(ctx, d)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("TSM: %d", res.Tsm), nil
+		return fmt.Sprintf("TIMESTAMPMICRO: %d", res.TimestampMicro), nil
 	case "lookup":
 		sarg := strings.SplitN(args, " ", 2)
 		if len(sarg) < 2 {
@@ -261,16 +261,16 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		}
 		l := &gp.LookupRequest{}
 		l.KeyA, l.KeyB = murmur3.Sum128([]byte(sarg[0]))
-		l.NameKeyA, l.NameKeyB = murmur3.Sum128([]byte(sarg[1]))
+		l.ChildKeyA, l.ChildKeyB = murmur3.Sum128([]byte(sarg[1]))
 		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 		res, err := c.gc.Lookup(ctx, l)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("TSM: %d", res.Tsm), nil
+		return fmt.Sprintf("TIMESTAMPMICRO: %d", res.TimestampMicro), nil
 	case "lookup-group":
 		l := &gp.LookupGroupRequest{}
-		l.A, l.B = murmur3.Sum128([]byte(args))
+		l.KeyA, l.KeyB = murmur3.Sum128([]byte(args))
 		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 		res, err := c.gc.LookupGroup(ctx, l)
 		if err != nil {
@@ -278,7 +278,7 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		}
 		keys := make([]string, len(res.Items))
 		for k, v := range res.Items {
-			keys[k] = fmt.Sprintf("TSM: %d [ %d | %d ]", v.TimestampMicro, v.NameKeyA, v.NameKeyB)
+			keys[k] = fmt.Sprintf("TIMESTAMPMICRO: %d [ %d | %d ]", v.TimestampMicro, v.ChildKeyA, v.ChildKeyB)
 		}
 		return fmt.Sprintf(strings.Join(keys, "\n")), nil
 	case "mode":

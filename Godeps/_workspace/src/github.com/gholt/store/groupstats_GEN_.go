@@ -167,7 +167,7 @@ type GroupStoreStats struct {
 	locmapDebugInfo            fmt.Stringer
 }
 
-func (store *defaultGroupStore) Stats(debug bool) fmt.Stringer {
+func (store *defaultGroupStore) Stats(debug bool) (fmt.Stringer, error) {
 	store.statsLock.Lock()
 	stats := &GroupStoreStats{
 		Lookups:                      atomic.LoadInt32(&store.lookups),
@@ -222,9 +222,9 @@ func (store *defaultGroupStore) Stats(debug bool) fmt.Stringer {
 	atomic.AddInt32(&store.writes, -stats.Writes)
 	atomic.AddInt32(&store.writeErrors, -stats.WriteErrors)
 	atomic.AddInt32(&store.writesOverridden, -stats.WritesOverridden)
-	atomic.AddInt32(&store.writes, -stats.Deletes)
-	atomic.AddInt32(&store.writeErrors, -stats.DeleteErrors)
-	atomic.AddInt32(&store.writesOverridden, -stats.DeletesOverridden)
+	atomic.AddInt32(&store.deletes, -stats.Deletes)
+	atomic.AddInt32(&store.deleteErrors, -stats.DeleteErrors)
+	atomic.AddInt32(&store.deletesOverridden, -stats.DeletesOverridden)
 	atomic.AddInt32(&store.outBulkSets, -stats.OutBulkSets)
 	atomic.AddInt32(&store.outBulkSetValues, -stats.OutBulkSetValues)
 	atomic.AddInt32(&store.outBulkSetPushes, -stats.OutBulkSetPushes)
@@ -302,7 +302,7 @@ func (store *defaultGroupStore) Stats(debug bool) fmt.Stringer {
 		stats.ValueBytes = locmapStats.ActiveBytes
 		stats.locmapDebugInfo = locmapStats
 	}
-	return stats
+	return stats, nil
 }
 
 func (stats *GroupStoreStats) String() string {
