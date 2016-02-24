@@ -15,6 +15,7 @@ CertFile = "/etc/oort/server.crt"
 KeyFile = "/etc/oort/server.key"
 
 [ValueStoreConfig]
+Scale = 0.1
 CompactionInterval = 42
 ValueCap = 4194302
 Path = "/data"
