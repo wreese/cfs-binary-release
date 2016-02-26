@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -79,6 +80,17 @@ func main() {
 	clargs := getArgs(flag.Args())
 	mountpoint := clargs["mountPoint"]
 	serverAddr := clargs["host"]
+
+	// crapy debug log handling :)
+	if debug, ok := clargs["debug"]; ok {
+		if debug == "false" {
+			log.SetFlags(0)
+			log.SetOutput(ioutil.Discard)
+		}
+	} else {
+		log.SetFlags(0)
+		log.SetOutput(ioutil.Discard)
+	}
 
 	// Setup grpc
 	var opts []grpc.DialOption

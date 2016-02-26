@@ -72,7 +72,7 @@ type default{{.T}}Store struct {
     disableEnableWritesLock sync.Mutex
     userDisabled            bool
     flusherState            {{.t}}FlusherState
-    diskWatcherState        {{.t}}DiskWatcherState
+    watcherState            {{.t}}WatcherState
     restartChan             chan error
 
     statsLock                    sync.Mutex
@@ -228,7 +228,7 @@ func New{{.T}}Store(c *{{.T}}StoreConfig) ({{.T}}Store, chan error) {
     store.bulkSetConfig(cfg)
     store.bulkSetAckConfig(cfg)
     store.flusherConfig(cfg)
-    store.diskWatcherConfig(cfg)
+    store.watcherConfig(cfg)
     return store, store.restartChan
 }
 
@@ -312,7 +312,7 @@ func (store *default{{.T}}Store) Startup() error {
         store.bulkSetStartup,
         store.bulkSetAckStartup,
         store.compactionStartup,
-        store.diskWatcherStartup,
+        store.watcherStartup,
         store.flusherStartup,
         store.pullReplicationStartup,
         store.pushReplicationStartup,
@@ -343,7 +343,7 @@ func (store *default{{.T}}Store) Shutdown() error {
         store.bulkSetShutdown,
         store.bulkSetAckShutdown,
         store.compactionShutdown,
-        store.diskWatcherShutdown,
+        store.watcherShutdown,
         store.flusherShutdown,
         store.pullReplicationShutdown,
         store.pushReplicationShutdown,
@@ -792,7 +792,10 @@ func (store *default{{.T}}Store) fileWriter() {
                 memWritersFlushLeft = len(store.pendingWriteReqChans)
                 continue
             }
-            for i := 0; i < len(store.freeableMemBlockChans); i++ {
+            // This loop is reversed so there isn't a race condition in the
+            // loop check; if you use the usual loop of 0 through len(x), the
+            // use of x in the len will race.
+			for i := len(store.freeableMemBlockChans)-1; i >= 0; i-- {
                 store.freeableMemBlockChans[i] <- shutdown{{.T}}MemBlock
             }
             break
