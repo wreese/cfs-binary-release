@@ -30,11 +30,13 @@ source /$USER/.bashrc
 # sup3r sekret option to install vim-go and basic vim-go friendly .vimrc
 if [ "$FANCYVIM" = "yes" ]; then
     echo "Performing fancy vim install"
+    apt-get install vim-nox
     mkdir -p ~/.vim/autoload ~/.vim/bundle && curl -LSso ~/.vim/autoload/pathogen.vim https://tpo.pe/pathogen.vim
     go get golang.org/x/tools/cmd/goimports
     git clone https://github.com/fatih/vim-go.git ~/.vim/bundle/vim-go
     git clone https://github.com/Shougo/neocomplete.vim.git ~/.vim/bundle/neocomplete.vim
     curl -o ~/.vimrc https://raw.githubusercontent.com/getcfs/cfs-binary-release/master/allinone/.vimrc
+    echo "let g:neocomplete#enable_at_startup = 1" >> ~/.vimrc
     go get github.com/nsf/gocode
     echo "Fancy VIM install complete. You may way want to open vim and run ':GoInstallBinaries' the first time you use it"
     sleep 1
