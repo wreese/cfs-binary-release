@@ -21,6 +21,11 @@ const _VALUE_PAGE_SIZE_MIN = 8 + _VALUE_FILE_ENTRY_SIZE
 // structure will have no effect on existing ValueStores; but deep changes
 // (such as reconfiguring an existing Logger) will.
 type ValueStoreConfig struct {
+	// Scale sets how much to scale the default values by; this can reduce
+	// memory usage for systems where the store isn't the only thing running on
+	// the hardware. Note that this will *not* scale explictly set values, just
+	// the values if they fallback to the defaults.
+	Scale float64
 	// LogCritical sets the func to use for critical messages; these are
 	// messages about issues that render the store inoperative. Defaults
 	// logging to os.Stderr.
@@ -195,35 +200,36 @@ type ValueStoreConfig struct {
 	// CompactionAgeThreshold indicates how old a given file must be before it
 	// is considered for compaction. Defaults to 300 seconds.
 	CompactionAgeThreshold int
-	// FreeDisableThreshold controls when to automatically disable writes; the
-	// number is in bytes. If the number of free bytes on either the Path or
-	// TOCPath device falls below this threshold, writes will be automatically
-	// disabled.
+	// DiskFreeDisableThreshold controls when to automatically disable writes;
+	// the number is in bytes. If the number of free bytes on either the Path
+	// or TOCPath device falls below this threshold, writes will be
+	// automatically disabled.
 	// 0 will use the default; 1 will disable the check.
 	// default: 8,589,934,592 (8G)
-	FreeDisableThreshold uint64
-	// FreeReenableThreshold controls when to automatically re-enable writes;
-	// the number is in bytes. If writes are automatically disabled and the
-	// number of free bytes on each of the Path or TOCPath devices rises above
-	// this threshold, writes will be automatically re-enabled. A negative
-	// value will turn off this check.
+	DiskFreeDisableThreshold uint64
+	// DiskFreeReenableThreshold controls when to automatically re-enable
+	// writes; the number is in bytes. If writes are automatically disabled and
+	// the number of free bytes on each of the Path or TOCPath devices rises
+	// above this threshold, writes will be automatically re-enabled. A
+	// negative value will turn off this check.
 	// 0 will use the default; 1 will disable the check.
 	// default: 17,179,869,184 (16G)
-	FreeReenableThreshold uint64
-	// UsageDisableThreshold controls when to automatically disable writes; the
-	// number is a percentage (1 == 100%). If the percentage used on either the
-	// Path or TOCPath device grows above this threshold, writes will be
+	DiskFreeReenableThreshold uint64
+	// DiskUsageDisableThreshold controls when to automatically disable writes;
+	// the number is a percentage (1 == 100%). If the percentage used on either
+	// the Path or TOCPath device grows above this threshold, writes will be
 	// automatically disabled.
 	// 0 will use the default; a negative value will disable the check.
-	// default: 95%
-	UsageDisableThreshold float32
-	// UsageReenableThreshold controls when to automatically re-enable writes;
-	// the number is a percentage (1 == 100%). If writes are automatically
-	// disabled and the percentage used on each of the Path or TOCPath devices
-	// falls below this threshold, writes will be automatically re-enabled.
+	// default: 0.95 (95%)
+	DiskUsageDisableThreshold float32
+	// DiskUsageReenableThreshold controls when to automatically re-enable
+	// writes; the number is a percentage (1 == 100%). If writes are
+	// automatically disabled and the percentage used on each of the Path or
+	// TOCPath devices falls below this threshold, writes will be automatically
+	// re-enabled.
 	// 0 will use the default; a negative value will disable the check.
-	// default: 90%
-	UsageReenableThreshold float32
+	// default: 0.90 (90%)
+	DiskUsageReenableThreshold float32
 	// FlusherThreshold sets the number of to-disk modifications controlling
 	// the once-a-minute automatic flusher. If there are less than this
 	// setting's number of modifications for a minute, the store's Flush method
@@ -242,6 +248,33 @@ type ValueStoreConfig struct {
 	// AuditAgeThreshold indicates how old a given file must be before it
 	// is considered for an audit. Defaults to 604,800 seconds (1 week).
 	AuditAgeThreshold int
+	// MemFreeDisableThreshold controls when to automatically disable writes;
+	// the number is in bytes. If the number of free bytes of memory falls
+	// below this threshold, writes will be automatically disabled.
+	// 0 will use the default; 1 will disable the check.
+	// default: 134,217,728 (128M)
+	MemFreeDisableThreshold uint64
+	// MemFreeReenableThreshold controls when to automatically re-enable
+	// writes; the number is in bytes. If writes are automatically disabled and
+	// the number of free bytes of memory rises above this threshold, writes
+	// will be automatically re-enabled. A negative value will turn off this
+	// check.
+	// 0 will use the default; 1 will disable the check.
+	// default: 268,435,456 (256M)
+	MemFreeReenableThreshold uint64
+	// MemUsageDisableThreshold controls when to automatically disable writes;
+	// the number is a percentage (1 == 100%). If the percentage of used memory
+	// grows above this threshold, writes will be automatically disabled.
+	// 0 will use the default; a negative value will disable the check.
+	// default: 0.95 (95%)
+	MemUsageDisableThreshold float32
+	// MemUsageReenableThreshold controls when to automatically re-enable
+	// writes; the number is a percentage (1 == 100%). If writes are
+	// automatically disabled and the percentage of used memory falls below
+	// this threshold, writes will be automatically re-enabled.
+	// 0 will use the default; a negative value will disable the check.
+	// default: 0.90 (90%)
+	MemUsageReenableThreshold float32
 
 	OpenReadSeeker    func(fullPath string) (io.ReadSeeker, error)
 	OpenWriteSeeker   func(fullPath string) (io.WriteSeeker, error)
@@ -259,6 +292,9 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 	cfg := &ValueStoreConfig{}
 	if c != nil {
 		*cfg = *c
+	}
+	if cfg.Scale <= 0 {
+		cfg.Scale = 1
 	}
 	if cfg.Rand == nil {
 		cfg.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -306,7 +342,7 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 		}
 	}
 	if cfg.Workers == 0 {
-		cfg.Workers = runtime.GOMAXPROCS(0)
+		cfg.Workers = int(float64(runtime.GOMAXPROCS(0)) * cfg.Scale)
 	}
 	if cfg.Workers < 1 {
 		cfg.Workers = 1
@@ -328,7 +364,7 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 		}
 	}
 	if cfg.PageSize == 0 {
-		cfg.PageSize = 4 * 1024 * 1024
+		cfg.PageSize = int(4 * 1024 * 1024 * cfg.Scale)
 	}
 	// Ensure each page will have at least ChecksumInterval worth of data in it
 	// so that each page written will at least flush the previous page's data.
@@ -354,7 +390,7 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 		}
 	}
 	if cfg.WritePagesPerWorker == 0 {
-		cfg.WritePagesPerWorker = 3
+		cfg.WritePagesPerWorker = int(3 * cfg.Scale)
 	}
 	if cfg.WritePagesPerWorker < 2 {
 		cfg.WritePagesPerWorker = 2
@@ -365,7 +401,7 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 		}
 	}
 	if cfg.MsgCap == 0 {
-		cfg.MsgCap = 16 * 1024 * 1024
+		cfg.MsgCap = int(16 * 1024 * 1024 * cfg.Scale)
 	}
 	// NOTE: This minimum needs to be the largest minimum size of all the
 	// message types; 1024 "should" be enough.
@@ -414,7 +450,7 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 		}
 	}
 	if cfg.RecoveryBatchSize == 0 {
-		cfg.RecoveryBatchSize = 1024 * 1024
+		cfg.RecoveryBatchSize = int(1024 * 1024 * cfg.Scale)
 	}
 	if cfg.RecoveryBatchSize < 1 {
 		cfg.RecoveryBatchSize = 1
@@ -436,7 +472,7 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 		}
 	}
 	if cfg.TombstoneDiscardBatchSize == 0 {
-		cfg.TombstoneDiscardBatchSize = 1024 * 1024
+		cfg.TombstoneDiscardBatchSize = int(1024 * 1024 * cfg.Scale)
 	}
 	if cfg.TombstoneDiscardBatchSize < 1 {
 		cfg.TombstoneDiscardBatchSize = 1
@@ -491,7 +527,7 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 		}
 	}
 	if cfg.OutPullReplicationMsgs == 0 {
-		cfg.OutPullReplicationMsgs = cfg.OutPullReplicationWorkers * 4
+		cfg.OutPullReplicationMsgs = int(float64(cfg.OutPullReplicationWorkers) * 4 * cfg.Scale)
 	}
 	if cfg.OutPullReplicationMsgs < 1 {
 		cfg.OutPullReplicationMsgs = 1
@@ -502,7 +538,7 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 		}
 	}
 	if cfg.OutPullReplicationBloomN == 0 {
-		cfg.OutPullReplicationBloomN = 1000000
+		cfg.OutPullReplicationBloomN = int(1000000 * cfg.Scale)
 	}
 	if cfg.OutPullReplicationBloomN < 1 {
 		cfg.OutPullReplicationBloomN = 1
@@ -546,7 +582,7 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 		}
 	}
 	if cfg.InPullReplicationMsgs == 0 {
-		cfg.InPullReplicationMsgs = cfg.InPullReplicationWorkers * 4
+		cfg.InPullReplicationMsgs = int(float64(cfg.InPullReplicationWorkers) * 4 * cfg.Scale)
 	}
 	if cfg.InPullReplicationMsgs < 1 {
 		cfg.InPullReplicationMsgs = 1
@@ -612,7 +648,7 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 		}
 	}
 	if cfg.OutBulkSetMsgs == 0 {
-		cfg.OutBulkSetMsgs = cfg.PushReplicationWorkers * 4
+		cfg.OutBulkSetMsgs = int(float64(cfg.PushReplicationWorkers) * 4 * cfg.Scale)
 	}
 	if cfg.OutBulkSetMsgs < 1 {
 		cfg.OutBulkSetMsgs = 1
@@ -634,7 +670,7 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 		}
 	}
 	if cfg.InBulkSetMsgs == 0 {
-		cfg.InBulkSetMsgs = cfg.InBulkSetWorkers * 4
+		cfg.InBulkSetMsgs = int(float64(cfg.InBulkSetWorkers) * 4 * cfg.Scale)
 	}
 	if cfg.InBulkSetMsgs < 1 {
 		cfg.InBulkSetMsgs = 1
@@ -678,7 +714,7 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 		}
 	}
 	if cfg.InBulkSetAckMsgs == 0 {
-		cfg.InBulkSetAckMsgs = cfg.InBulkSetAckWorkers * 4
+		cfg.InBulkSetAckMsgs = int(float64(cfg.InBulkSetAckWorkers) * 4 * cfg.Scale)
 	}
 	if cfg.InBulkSetAckMsgs < 1 {
 		cfg.InBulkSetAckMsgs = 1
@@ -689,7 +725,7 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 		}
 	}
 	if cfg.OutBulkSetAckMsgs == 0 {
-		cfg.OutBulkSetAckMsgs = cfg.InBulkSetAckWorkers * 4
+		cfg.OutBulkSetAckMsgs = int(float64(cfg.InBulkSetAckWorkers) * 4 * cfg.Scale)
 	}
 	if cfg.OutBulkSetAckMsgs < 1 {
 		cfg.OutBulkSetAckMsgs = 1
@@ -738,45 +774,45 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 	if cfg.CompactionAgeThreshold < 1 {
 		cfg.CompactionAgeThreshold = 1
 	}
-	if env := os.Getenv("VALUESTORE_FREE_DISABLE_THRESHOLD"); env != "" {
+	if env := os.Getenv("VALUESTORE_DISK_FREE_DISABLE_THRESHOLD"); env != "" {
 		if val, err := strconv.ParseUint(env, 10, 64); err == nil {
-			cfg.FreeDisableThreshold = val
+			cfg.DiskFreeDisableThreshold = val
 		}
 	}
 	// NOTE: If the value is 1, that will disable the check
-	if cfg.FreeDisableThreshold == 0 {
-		cfg.FreeDisableThreshold = 8589934592
+	if cfg.DiskFreeDisableThreshold == 0 {
+		cfg.DiskFreeDisableThreshold = 8589934592
 	}
-	if env := os.Getenv("VALUESTORE_FREE_REENABLE_THRESHOLD"); env != "" {
+	if env := os.Getenv("VALUESTORE_DISK_FREE_REENABLE_THRESHOLD"); env != "" {
 		if val, err := strconv.ParseUint(env, 10, 64); err == nil {
-			cfg.FreeReenableThreshold = val
+			cfg.DiskFreeReenableThreshold = val
 		}
 	}
 	// NOTE: If the value is 1, that will disable the check
-	if cfg.FreeReenableThreshold == 0 {
-		cfg.FreeReenableThreshold = 17179869184
+	if cfg.DiskFreeReenableThreshold == 0 {
+		cfg.DiskFreeReenableThreshold = 17179869184
 	}
-	if env := os.Getenv("VALUESTORE_USAGE_DISABLE_THRESHOLD"); env != "" {
+	if env := os.Getenv("VALUESTORE_DISK_USAGE_DISABLE_THRESHOLD"); env != "" {
 		if val, err := strconv.ParseFloat(env, 32); err == nil {
-			cfg.UsageDisableThreshold = float32(val)
+			cfg.DiskUsageDisableThreshold = float32(val)
 		}
 	}
-	if cfg.UsageDisableThreshold == 0 {
-		cfg.UsageDisableThreshold = 95
+	if cfg.DiskUsageDisableThreshold == 0 {
+		cfg.DiskUsageDisableThreshold = 0.95
 	}
-	if cfg.UsageDisableThreshold < 0 {
-		cfg.UsageDisableThreshold = 0
+	if cfg.DiskUsageDisableThreshold < 0 {
+		cfg.DiskUsageDisableThreshold = 0
 	}
-	if env := os.Getenv("VALUESTORE_USAGE_REENABLE_THRESHOLD"); env != "" {
+	if env := os.Getenv("VALUESTORE_DISK_USAGE_REENABLE_THRESHOLD"); env != "" {
 		if val, err := strconv.ParseFloat(env, 32); err == nil {
-			cfg.UsageReenableThreshold = float32(val)
+			cfg.DiskUsageReenableThreshold = float32(val)
 		}
 	}
-	if cfg.UsageReenableThreshold == 0 {
-		cfg.UsageReenableThreshold = 90
+	if cfg.DiskUsageReenableThreshold == 0 {
+		cfg.DiskUsageReenableThreshold = 0.90
 	}
-	if cfg.UsageReenableThreshold < 0 {
-		cfg.UsageReenableThreshold = 0
+	if cfg.DiskUsageReenableThreshold < 0 {
+		cfg.DiskUsageReenableThreshold = 0
 	}
 	if env := os.Getenv("VALUESTORE_FLUSHER_THRESHOLD"); env != "" {
 		if val, err := strconv.Atoi(env); err == nil {
@@ -810,6 +846,46 @@ func resolveValueStoreConfig(c *ValueStoreConfig) *ValueStoreConfig {
 	}
 	if cfg.AuditAgeThreshold < 1 {
 		cfg.AuditAgeThreshold = 1
+	}
+	if env := os.Getenv("VALUESTORE_MEM_FREE_DISABLE_THRESHOLD"); env != "" {
+		if val, err := strconv.ParseUint(env, 10, 64); err == nil {
+			cfg.MemFreeDisableThreshold = val
+		}
+	}
+	// NOTE: If the value is 1, that will disable the check
+	if cfg.MemFreeDisableThreshold == 0 {
+		cfg.MemFreeDisableThreshold = 134217728
+	}
+	if env := os.Getenv("VALUESTORE_MEM_FREE_REENABLE_THRESHOLD"); env != "" {
+		if val, err := strconv.ParseUint(env, 10, 64); err == nil {
+			cfg.MemFreeReenableThreshold = val
+		}
+	}
+	// NOTE: If the value is 1, that will disable the check
+	if cfg.MemFreeReenableThreshold == 0 {
+		cfg.MemFreeReenableThreshold = 268435456
+	}
+	if env := os.Getenv("VALUESTORE_MEM_USAGE_DISABLE_THRESHOLD"); env != "" {
+		if val, err := strconv.ParseFloat(env, 32); err == nil {
+			cfg.MemUsageDisableThreshold = float32(val)
+		}
+	}
+	if cfg.MemUsageDisableThreshold == 0 {
+		cfg.MemUsageDisableThreshold = 0.95
+	}
+	if cfg.MemUsageDisableThreshold < 0 {
+		cfg.MemUsageDisableThreshold = 0
+	}
+	if env := os.Getenv("VALUESTORE_MEM_USAGE_REENABLE_THRESHOLD"); env != "" {
+		if val, err := strconv.ParseFloat(env, 32); err == nil {
+			cfg.MemUsageReenableThreshold = float32(val)
+		}
+	}
+	if cfg.MemUsageReenableThreshold == 0 {
+		cfg.MemUsageReenableThreshold = 0.90
+	}
+	if cfg.MemUsageReenableThreshold < 0 {
+		cfg.MemUsageReenableThreshold = 0
 	}
 
 	if cfg.OpenReadSeeker == nil {
