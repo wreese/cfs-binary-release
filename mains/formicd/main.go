@@ -12,18 +12,23 @@ import (
 	"google.golang.org/grpc/grpclog"
 
 	pb "github.com/creiht/formic/proto"
+	"github.com/pandemicsyn/ftls"
 
 	"net"
 )
 
 var (
-	usetls             = flag.Bool("tls", true, "Connection uses TLS if true, else plain TCP")
-	certFile           = flag.String("cert_file", "/etc/oort/server.crt", "The TLS cert file")
-	keyFile            = flag.String("key_file", "/etc/oort/server.key", "The TLS key file")
-	port               = flag.Int("port", 9443, "The server port")
-	oortValueHost      = flag.String("oortvaluehost", "127.0.0.1:6379", "host:port to use when connecting to oort value")
-	oortGroupHost      = flag.String("oortgrouphost", "127.0.0.1:6380", "host:port to use when connecting to oort group")
-	insecureSkipVerify = flag.Bool("skipverify", true, "don't verify cert")
+	usetls              = flag.Bool("tls", true, "Connection uses TLS if true, else plain TCP")
+	certFile            = flag.String("cert_file", "/etc/oort/server.crt", "The TLS cert file")
+	keyFile             = flag.String("key_file", "/etc/oort/server.key", "The TLS key file")
+	port                = flag.Int("port", 9443, "The server port")
+	oortValueHost       = flag.String("oortvaluehost", "127.0.0.1:6379", "host:port to use when connecting to oort value")
+	oortGroupHost       = flag.String("oortgrouphost", "127.0.0.1:6380", "host:port to use when connecting to oort group")
+	insecureSkipVerify  = flag.Bool("skipverify", true, "don't verify cert")
+	oortCLientMutualTLS = flag.Bool("mutualtls", false, "whether or not the server expects mutual tls auth")
+	oortClientCert      = flag.String("oort-client-cert", "/etc/oort/client.crt", "cert file to use")
+	oortClientKey       = flag.String("oort-client-key", "/etc/oort/client.key", "key file to use")
+	oortClientCA        = flag.String("oort-client-ca", "/etc/oort/ca.pem", "ca file to use")
 )
 
 // FatalIf is just a lazy log/panic on error func
@@ -31,6 +36,10 @@ func FatalIf(err error, msg string) {
 	if err != nil {
 		grpclog.Fatalf("%s: %v", msg, err)
 	}
+}
+
+func oortClientCredentials() {
+
 }
 
 func main() {
@@ -81,7 +90,17 @@ func main() {
 		opts = []grpc.ServerOption{grpc.Creds(creds)}
 	}
 	s := grpc.NewServer(opts...)
-	fs, err := NewOortFS(*oortValueHost, *oortGroupHost, *insecureSkipVerify)
+	copt, err := ftls.NewGRPCClientDialOpt(&ftls.Config{
+		MutualTLS:          *oortCLientMutualTLS,
+		InsecureSkipVerify: *insecureSkipVerify,
+		CertFile:           *oortClientCert,
+		KeyFile:            *oortClientKey,
+		CAFile:             *oortClientCA,
+	})
+	if err != nil {
+		grpclog.Fatalln("Cannot setup tls config:", err)
+	}
+	fs, err := NewOortFS(*oortValueHost, *oortGroupHost, copt)
 	if err != nil {
 		grpclog.Fatalln(err)
 	}

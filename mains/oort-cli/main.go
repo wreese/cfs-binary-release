@@ -12,6 +12,7 @@ import (
 
 	"github.com/gholt/brimtime"
 	"github.com/gholt/store"
+	"github.com/pandemicsyn/ftls"
 	"github.com/pandemicsyn/oort/api"
 	"github.com/peterh/liner"
 	"github.com/spaolacci/murmur3"
@@ -21,6 +22,12 @@ import (
 var vaddr = flag.String("vhost", "127.0.0.1:6379", "vstore addr")
 var gaddr = flag.String("ghost", "127.0.0.1:6380", "gstore addr")
 var groupmode = flag.Bool("g", false, "whether we're talking to a groupstore instance")
+var tls = flag.Bool("tls", true, "whether the server is speaking tls")
+var insecureSkipVerify = flag.Bool("insecure", false, "whether or not we should verify the cert")
+var mutualtls = flag.Bool("mutualtls", false, "whether or not the server expects mutual tls auth")
+var certfile = flag.String("cert", "/etc/oort/client.crt", "cert file to use")
+var keyfile = flag.String("key", "/etc/oort/client.key", "key file to use")
+var cafile = flag.String("ca", "/etc/oort/ca.pem", "ca file to use")
 
 var (
 	prompt    = "> "
@@ -100,7 +107,7 @@ func (c *Client) parseValueCmd(line string) (string, error) {
 	case "read":
 		keyA, keyB := murmur3.Sum128([]byte(args))
 		timestampMicro, value, err := c.vstore.Read(keyA, keyB, nil)
-		if err == store.ErrNotFound {
+		if store.IsNotFound(err) {
 			return fmt.Sprintf("not found"), nil
 		} else if err != nil {
 			return "", err
@@ -117,7 +124,7 @@ func (c *Client) parseValueCmd(line string) (string, error) {
 	case "lookup":
 		keyA, keyB := murmur3.Sum128([]byte(args))
 		timestampMicro, length, err := c.vstore.Lookup(keyA, keyB)
-		if err == store.ErrNotFound {
+		if store.IsNotFound(err) {
 			return fmt.Sprintf("not found"), nil
 		} else if err != nil {
 			return "", err
@@ -197,7 +204,7 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		keyA, keyB := murmur3.Sum128([]byte(sarg[0]))
 		childKeyA, childKeyB := murmur3.Sum128([]byte(sarg[1]))
 		timestampMicro, value, err := c.gstore.Read(keyA, keyB, childKeyA, childKeyB, nil)
-		if err == store.ErrNotFound {
+		if store.IsNotFound(err) {
 			return fmt.Sprintf("not found"), nil
 		} else if err != nil {
 			return "", err
@@ -218,7 +225,7 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 			return "", err
 		}
 		timestampMicro, value, err := c.gstore.Read(keyA, keyB, childKeyA, childKeyB, nil)
-		if err == store.ErrNotFound {
+		if store.IsNotFound(err) {
 			return fmt.Sprintf("not found"), nil
 		} else if err != nil {
 			return "", err
@@ -245,7 +252,7 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		keyA, keyB := murmur3.Sum128([]byte(sarg[0]))
 		childKeyA, childKeyB := murmur3.Sum128([]byte(sarg[1]))
 		timestampMicro, length, err := c.gstore.Lookup(keyA, keyB, childKeyA, childKeyB)
-		if err == store.ErrNotFound {
+		if store.IsNotFound(err) {
 			return fmt.Sprintf("not found"), nil
 		} else if err != nil {
 			return "", err
@@ -254,7 +261,7 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 	case "lookup-group":
 		keyA, keyB := murmur3.Sum128([]byte(args))
 		items, err := c.gstore.LookupGroup(keyA, keyB)
-		if err == store.ErrNotFound {
+		if store.IsNotFound(err) {
 			return fmt.Sprintf("not found"), nil
 		} else if err != nil {
 			return "", err
@@ -282,7 +289,21 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 
 func (c *Client) getValueClient() {
 	var err error
-	c.vstore, err = api.NewValueStore(c.vaddr, 10, true)
+	var opts []grpc.DialOption
+	if *tls {
+		opt, err := ftls.NewGRPCClientDialOpt(&ftls.Config{
+			MutualTLS:          *mutualtls,
+			InsecureSkipVerify: *insecureSkipVerify,
+			CertFile:           *certfile,
+			KeyFile:            *keyfile,
+			CAFile:             *cafile,
+		})
+		if err != nil {
+			log.Fatalln("Cannot setup tls config:", err)
+		}
+		opts = append(opts, opt)
+	}
+	c.vstore, err = api.NewValueStore(c.vaddr, 10, opts...)
 	if err != nil {
 		log.Fatalln("Cannot create value store:", err)
 	}
@@ -290,7 +311,21 @@ func (c *Client) getValueClient() {
 
 func (c *Client) getGroupClient() {
 	var err error
-	c.gstore, err = api.NewGroupStore(c.gaddr, 10, true)
+	var opts []grpc.DialOption
+	if *tls {
+		opt, err := ftls.NewGRPCClientDialOpt(&ftls.Config{
+			MutualTLS:          *mutualtls,
+			InsecureSkipVerify: *insecureSkipVerify,
+			CertFile:           *certfile,
+			KeyFile:            *keyfile,
+			CAFile:             *cafile,
+		})
+		if err != nil {
+			log.Fatalln("Cannot setup tls config:", err)
+		}
+		opts = append(opts, opt)
+	}
+	c.gstore, err = api.NewGroupStore(c.gaddr, 10, opts...)
 	if err != nil {
 		log.Fatalln("Cannot create group store:", err)
 	}
@@ -302,7 +337,7 @@ type Client struct {
 	gmode  bool
 	vconn  *grpc.ClientConn
 	vstore store.ValueStore
-	gstore api.GroupStore
+	gstore store.GroupStore
 }
 
 func main() {

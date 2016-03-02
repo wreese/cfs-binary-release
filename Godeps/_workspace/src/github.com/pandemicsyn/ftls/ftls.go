@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 var (
@@ -113,6 +116,18 @@ func NewServerTLSConfig(c *Config) (*tls.Config, error) {
 	tlsConf.Certificates = []tls.Certificate{cert}
 	tlsConf.InsecureSkipVerify = c.InsecureSkipVerify
 	return tlsConf, nil
+}
+
+func NewGRPCClientDialOpt(c *Config) (grpc.DialOption, error) {
+	var opt grpc.DialOption
+	if c.InsecureSkipVerify {
+		return grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})), nil
+	}
+	tlsConf, err := NewClientTLSConfig(c)
+	if err != nil {
+		return opt, err
+	}
+	return grpc.WithTransportCredentials(credentials.NewTLS(tlsConf)), nil
 }
 
 func VerifyClientAddrMatch(c *tls.Conn) error {

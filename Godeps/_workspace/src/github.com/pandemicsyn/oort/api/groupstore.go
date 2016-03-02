@@ -1,7 +1,6 @@
 package api
 
 import (
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"sync"
@@ -11,7 +10,6 @@ import (
 	"github.com/pandemicsyn/oort/api/proto"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
 // TODO: I'm unsure on the handling of grpc errors; the ones grpc has, not that
@@ -28,24 +26,10 @@ import (
 
 // TODO: We should consider using templatized code for this and valuestore.go
 
-type GroupStore interface {
-	store.GroupStore
-	ReadGroup(parentKeyA, parentKeyB uint64) ([]ReadGroupItem, error)
-}
-
-type ReadGroupItem struct {
-	ChildKeyA      uint64
-	ChildKeyB      uint64
-	TimestampMicro int64
-	Value          []byte
-}
-
 type groupStore struct {
 	lock               sync.Mutex
 	addr               string
-	insecureSkipVerify bool
 	opts               []grpc.DialOption
-	creds              credentials.TransportAuthenticator
 	conn               *grpc.ClientConn
 	client             groupproto.GroupStoreClient
 	lookupStreams      chan groupproto.GroupStore_StreamLookupClient
@@ -59,14 +43,11 @@ type groupStore struct {
 // NewGroupStore creates a GroupStore connection via grpc to the given address;
 // note that Startup() will have been called in the returned store, so calling
 // Startup() yourself is optional.
-func NewGroupStore(addr string, streams int, insecureSkipVerify bool, opts ...grpc.DialOption) (GroupStore, error) {
+func NewGroupStore(addr string, streams int, opts ...grpc.DialOption) (store.GroupStore, error) {
 	g := &groupStore{
-		addr:               addr,
-		insecureSkipVerify: insecureSkipVerify,
-		opts:               opts,
-		creds:              credentials.NewTLS(&tls.Config{InsecureSkipVerify: insecureSkipVerify}),
+		addr: addr,
+		opts: opts,
 	}
-	g.opts = append(g.opts, grpc.WithTransportCredentials(g.creds))
 	g.lookupStreams = make(chan groupproto.GroupStore_StreamLookupClient, streams)
 	g.lookupGroupStreams = make(chan groupproto.GroupStore_StreamLookupGroupClient, streams)
 	g.readStreams = make(chan groupproto.GroupStore_StreamReadClient, streams)
@@ -354,7 +335,7 @@ func (g *groupStore) Delete(parentKeyA, parentKeyB, childKeyA, childKeyB uint64,
 	return res.TimestampMicro, err
 }
 
-func (g *groupStore) ReadGroup(parentKeyA, parentKeyB uint64) ([]ReadGroupItem, error) {
+func (g *groupStore) ReadGroup(parentKeyA, parentKeyB uint64) ([]store.ReadGroupItem, error) {
 	var err error
 	s := <-g.readGroupStreams
 	if s == nil {
@@ -379,7 +360,7 @@ func (g *groupStore) ReadGroup(parentKeyA, parentKeyB uint64) ([]ReadGroupItem, 
 		g.readGroupStreams <- nil
 		return nil, err
 	}
-	rv := make([]ReadGroupItem, len(res.Items))
+	rv := make([]store.ReadGroupItem, len(res.Items))
 	for i, v := range res.Items {
 		rv[i].ChildKeyA = v.ChildKeyA
 		rv[i].ChildKeyB = v.ChildKeyB
