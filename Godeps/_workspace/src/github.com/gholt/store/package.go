@@ -120,7 +120,6 @@ package store
 //go:generate got stats.got groupstats_GEN_.go TT=GROUP T=Group t=group
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -149,8 +148,39 @@ const (
 	TIMESTAMPMICRO_MAX = int64(uint64(math.MaxUint64) >> _TSB_UTIL_BITS)
 )
 
-var ErrNotFound error = errors.New("not found")
-var ErrDisabled error = errors.New("disabled")
+func IsNotFound(err error) bool {
+	_, is := err.(ErrNotFound)
+	return is
+}
+
+type ErrNotFound interface {
+	ErrNotFound() string
+}
+
+var errNotFound error = _errNotFound{}
+
+type _errNotFound struct{}
+
+func (e _errNotFound) Error() string { return "not found" }
+
+func (e _errNotFound) ErrNotFound() string { return "not found" }
+
+func IsDisabled(err error) bool {
+	_, is := err.(ErrDisabled)
+	return is
+}
+
+type ErrDisabled interface {
+	ErrDisabled() string
+}
+
+var errDisabled error = _errDisabled{}
+
+type _errDisabled struct{}
+
+func (e _errDisabled) Error() string { return "disabled" }
+
+func (e _errDisabled) ErrDisabled() string { return "disabled" }
 
 var toss []byte = make([]byte, 65536)
 
@@ -280,6 +310,14 @@ type LookupGroupItem struct {
 	Length         uint32
 }
 
+// ReadGroupItem is returned by the GroupStore.ReadGroup call.
+type ReadGroupItem struct {
+	ChildKeyA      uint64
+	ChildKeyB      uint64
+	TimestampMicro int64
+	Value          []byte
+}
+
 // GroupStore is an interface for a disk-backed data structure that stores
 // []byte values referenced by 128 bit key pairs with options for replication.
 // Values are stored by the combination of both pairs (parentKeyA, parentKeyB,
@@ -315,6 +353,9 @@ type GroupStore interface {
 	// or returns any error; a newer timestampmicro already in place is not
 	// reported as an error. Note that with a Write and a Delete for the exact
 	// same timestampmicro, the Delete wins.
+	// ReadGroup returns all the (childKeyA, childKeyB, timestampMicro, value)
+	// items matching under (parentKeyA, parentKeyB).
+	ReadGroup(parentKeyA, parentKeyB uint64) ([]ReadGroupItem, error)
 	Write(parentKeyA, parentKeyB, childKeyA, childKeyB uint64, timestampmicro int64, value []byte) (oldtimestampmicro int64, err error)
 	// Delete stores timestampmicro for (parentKeyA, parentKeyB, childKeyA,
 	// childKeyB) and returns the previously stored timestampmicro or returns
