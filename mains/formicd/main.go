@@ -24,7 +24,7 @@ var (
 	port                = flag.Int("port", 9443, "The server port")
 	oortValueHost       = flag.String("oortvaluehost", "127.0.0.1:6379", "host:port to use when connecting to oort value")
 	oortGroupHost       = flag.String("oortgrouphost", "127.0.0.1:6380", "host:port to use when connecting to oort group")
-	insecureSkipVerify  = flag.Bool("skipverify", true, "don't verify cert")
+	insecureSkipVerify  = flag.Bool("skipverify", false, "don't verify cert")
 	oortClientMutualTLS = flag.Bool("mutualtls", false, "whether or not the server expects mutual tls auth")
 	oortClientCert      = flag.String("oort-client-cert", "/etc/oort/client.crt", "cert file to use")
 	oortClientKey       = flag.String("oort-client-key", "/etc/oort/client.key", "key file to use")
@@ -75,7 +75,6 @@ func main() {
 	if envkey != "" {
 		*keyFile = envkey
 	}
-
 	envSkipVerify := os.Getenv("FORMICD_INSECURE_SKIP_VERIFY")
 	if envSkipVerify == "true" {
 		*insecureSkipVerify = true
