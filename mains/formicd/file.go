@@ -18,6 +18,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/pandemicsyn/oort/api"
 	"github.com/spaolacci/murmur3"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
@@ -28,22 +29,22 @@ const (
 )
 
 type FileService interface {
-	GetAttr(id []byte) (*pb.Attr, error)
-	SetAttr(id []byte, attr *pb.Attr, valid uint32) (*pb.Attr, error)
-	Create(parent, id []byte, inode uint64, name string, attr *pb.Attr, isdir bool) (string, *pb.Attr, error)
-	Update(id []byte, block, size, blocksize uint64, mtime int64) error
-	Lookup(parent []byte, name string) (string, *pb.Attr, error)
-	ReadDirAll(id []byte) (*pb.ReadDirAllResponse, error)
-	Remove(parent []byte, name string) (int32, error)
-	Symlink(parent, id []byte, name string, target string, attr *pb.Attr, inode uint64) (*pb.SymlinkResponse, error)
-	Readlink(id []byte) (*pb.ReadlinkResponse, error)
-	Getxattr(id []byte, name string) (*pb.GetxattrResponse, error)
-	Setxattr(id []byte, name string, value []byte) (*pb.SetxattrResponse, error)
-	Listxattr(id []byte) (*pb.ListxattrResponse, error)
-	Removexattr(id []byte, name string) (*pb.RemovexattrResponse, error)
-	Rename(oldParent, newParent []byte, oldName, newName string) (*pb.RenameResponse, error)
-	GetChunk(id []byte) ([]byte, error)
-	WriteChunk(id, data []byte) error
+	GetAttr(ctx context.Context, id []byte) (*pb.Attr, error)
+	SetAttr(ctx context.Context, id []byte, attr *pb.Attr, valid uint32) (*pb.Attr, error)
+	Create(ctx context.Context, parent, id []byte, inode uint64, name string, attr *pb.Attr, isdir bool) (string, *pb.Attr, error)
+	Update(ctx context.Context, id []byte, block, size, blocksize uint64, mtime int64) error
+	Lookup(ctx context.Context, parent []byte, name string) (string, *pb.Attr, error)
+	ReadDirAll(ctx context.Context, id []byte) (*pb.ReadDirAllResponse, error)
+	Remove(ctx context.Context, parent []byte, name string) (int32, error)
+	Symlink(ctx context.Context, parent, id []byte, name string, target string, attr *pb.Attr, inode uint64) (*pb.SymlinkResponse, error)
+	Readlink(ctx context.Context, id []byte) (*pb.ReadlinkResponse, error)
+	Getxattr(ctx context.Context, id []byte, name string) (*pb.GetxattrResponse, error)
+	Setxattr(ctx context.Context, id []byte, name string, value []byte) (*pb.SetxattrResponse, error)
+	Listxattr(ctx context.Context, id []byte) (*pb.ListxattrResponse, error)
+	Removexattr(ctx context.Context, id []byte, name string) (*pb.RemovexattrResponse, error)
+	Rename(ctx context.Context, oldParent, newParent []byte, oldName, newName string) (*pb.RenameResponse, error)
+	GetChunk(ctx context.Context, id []byte) ([]byte, error)
+	WriteChunk(ctx context.Context, id, data []byte) error
 }
 
 var ErrStoreHasNewerValue = errors.New("Error store already has newer value")
@@ -65,14 +66,16 @@ func NewOortFS(vaddr, gaddr string, grpcOpts ...grpc.DialOption) (*OortFS, error
 		gaddr:  gaddr,
 		hasher: crc32.NewIEEE,
 	}
+	// TODO: The context.Background() calls likely need to be replaced with
+	// actual contexts having a timeouts.
 	// TODO: These 10s here are the number of grpc streams the api can make per
 	// request type; should likely be configurable somewhere along the line,
 	// but hardcoded for now.
-	o.vstore, err = api.NewValueStore(vaddr, 10, grpcOpts...)
+	o.vstore, err = api.NewValueStore(context.Background(), vaddr, 10, grpcOpts...)
 	if err != nil {
 		return &OortFS{}, err
 	}
-	o.gstore, err = api.NewGroupStore(gaddr, 10, grpcOpts...)
+	o.gstore, err = api.NewGroupStore(context.Background(), gaddr, 10, grpcOpts...)
 	if err != nil {
 		return &OortFS{}, err
 	}
@@ -80,7 +83,7 @@ func NewOortFS(vaddr, gaddr string, grpcOpts ...grpc.DialOption) (*OortFS, error
 	// NOTE: This also means that it is only single user until we init filesystems out of band
 	// Init the root node
 	id := GetID(1, 1, 1, 0)
-	n, err := o.GetChunk(id)
+	n, err := o.GetChunk(context.Background(), id)
 	if len(n) == 0 {
 		log.Println("Root node not found, creating new root")
 		// Need to create the root node
@@ -104,7 +107,7 @@ func NewOortFS(vaddr, gaddr string, grpcOpts ...grpc.DialOption) (*OortFS, error
 		if err != nil {
 			return &OortFS{}, err
 		}
-		err = o.WriteChunk(id, b)
+		err = o.WriteChunk(context.Background(), id, b)
 		if err != nil {
 			return &OortFS{}, err
 		}
@@ -113,18 +116,18 @@ func NewOortFS(vaddr, gaddr string, grpcOpts ...grpc.DialOption) (*OortFS, error
 }
 
 // Helper methods to get data from value and group store
-func (o *OortFS) readValue(id []byte) ([]byte, error) {
+func (o *OortFS) readValue(ctx context.Context, id []byte) ([]byte, error) {
 	// TODO: You might want to make this whole area pass in reusable []byte to
 	// lessen gc pressure.
 	keyA, keyB := murmur3.Sum128(id)
-	_, v, err := o.vstore.Read(keyA, keyB, nil)
+	_, v, err := o.vstore.Read(ctx, keyA, keyB, nil)
 	return v, err
 }
 
-func (o *OortFS) writeValue(id, data []byte) error {
+func (o *OortFS) writeValue(ctx context.Context, id, data []byte) error {
 	keyA, keyB := murmur3.Sum128(id)
 	timestampMicro := brimtime.TimeToUnixMicro(time.Now())
-	oldTimestampMicro, err := o.vstore.Write(keyA, keyB, timestampMicro, data)
+	oldTimestampMicro, err := o.vstore.Write(ctx, keyA, keyB, timestampMicro, data)
 	if err != nil {
 		return err
 	}
@@ -134,21 +137,21 @@ func (o *OortFS) writeValue(id, data []byte) error {
 	return nil
 }
 
-func (o *OortFS) deleteValue(id []byte) error {
+func (o *OortFS) deleteValue(ctx context.Context, id []byte) error {
 	keyA, keyB := murmur3.Sum128(id)
 	timestampMicro := brimtime.TimeToUnixMicro(time.Now())
-	oldTimestampMicro, err := o.vstore.Delete(keyA, keyB, timestampMicro)
+	oldTimestampMicro, err := o.vstore.Delete(ctx, keyA, keyB, timestampMicro)
 	if oldTimestampMicro >= timestampMicro {
 		return ErrStoreHasNewerValue
 	}
 	return err
 }
 
-func (o *OortFS) writeGroup(key, childKey, value []byte) error {
+func (o *OortFS) writeGroup(ctx context.Context, key, childKey, value []byte) error {
 	keyA, keyB := murmur3.Sum128(key)
 	childKeyA, childKeyB := murmur3.Sum128(childKey)
 	timestampMicro := brimtime.TimeToUnixMicro(time.Now())
-	oldTimestampMicro, err := o.gstore.Write(keyA, keyB, childKeyA, childKeyB, timestampMicro, value)
+	oldTimestampMicro, err := o.gstore.Write(ctx, keyA, keyB, childKeyA, childKeyB, timestampMicro, value)
 	if err != nil {
 		return nil
 	}
@@ -158,22 +161,22 @@ func (o *OortFS) writeGroup(key, childKey, value []byte) error {
 	return nil
 }
 
-func (o *OortFS) readGroupItem(key, childKey []byte) ([]byte, error) {
+func (o *OortFS) readGroupItem(ctx context.Context, key, childKey []byte) ([]byte, error) {
 	childKeyA, childKeyB := murmur3.Sum128(childKey)
-	return o.readGroupItemByKey(key, childKeyA, childKeyB)
+	return o.readGroupItemByKey(ctx, key, childKeyA, childKeyB)
 }
 
-func (o *OortFS) readGroupItemByKey(key []byte, childKeyA, childKeyB uint64) ([]byte, error) {
+func (o *OortFS) readGroupItemByKey(ctx context.Context, key []byte, childKeyA, childKeyB uint64) ([]byte, error) {
 	keyA, keyB := murmur3.Sum128(key)
-	_, v, err := o.gstore.Read(keyA, keyB, childKeyA, childKeyB, nil)
+	_, v, err := o.gstore.Read(ctx, keyA, keyB, childKeyA, childKeyB, nil)
 	return v, err
 }
 
-func (o *OortFS) deleteGroupItem(key, childKey []byte) error {
+func (o *OortFS) deleteGroupItem(ctx context.Context, key, childKey []byte) error {
 	keyA, keyB := murmur3.Sum128(key)
 	childKeyA, childKeyB := murmur3.Sum128(childKey)
 	timestampMicro := brimtime.TimeToUnixMicro(time.Now())
-	oldTimestampMicro, err := o.gstore.Delete(keyA, keyB, childKeyA, childKeyB, timestampMicro)
+	oldTimestampMicro, err := o.gstore.Delete(ctx, keyA, keyB, childKeyA, childKeyB, timestampMicro)
 	if err != nil {
 		return err
 	}
@@ -181,20 +184,14 @@ func (o *OortFS) deleteGroupItem(key, childKey []byte) error {
 		return ErrStoreHasNewerValue
 	}
 	return nil
-	/*
-		r := &gp.DeleteRequest{}
-		r.KeyA, r.KeyB = murmur3.Sum128(key)
-		r.ChildKeyA, r.ChildKeyB = murmur3.Sum128(childKey)
-		r.TimestampMicro = brimtime.TimeToUnixMicro(time.Now())
-		ctx, _ := context.WithTimeout(context.Background(), time.Second*10)
-		_, err := o.gclient.Delete(ctx, r)
-		return err
-	*/
 }
 
 // FileService methods
-func (o *OortFS) GetChunk(id []byte) ([]byte, error) {
-	b, err := o.readValue(id)
+func (o *OortFS) GetChunk(ctx context.Context, id []byte) ([]byte, error) {
+	b, err := o.readValue(ctx, id)
+	if store.IsNotFound(err) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +204,7 @@ func (o *OortFS) GetChunk(id []byte) ([]byte, error) {
 	return fb.Data, nil
 }
 
-func (o *OortFS) WriteChunk(id, data []byte) error {
+func (o *OortFS) WriteChunk(ctx context.Context, id, data []byte) error {
 	crc := o.hasher()
 	crc.Write(data)
 	fb := &pb.FileBlock{
@@ -219,11 +216,11 @@ func (o *OortFS) WriteChunk(id, data []byte) error {
 	if err != nil {
 		return err
 	}
-	return o.writeValue(id, b)
+	return o.writeValue(ctx, id, b)
 }
 
-func (o *OortFS) GetAttr(id []byte) (*pb.Attr, error) {
-	b, err := o.GetChunk(id)
+func (o *OortFS) GetAttr(ctx context.Context, id []byte) (*pb.Attr, error) {
+	b, err := o.GetChunk(ctx, id)
 	if err != nil {
 		return &pb.Attr{}, err
 	}
@@ -235,9 +232,9 @@ func (o *OortFS) GetAttr(id []byte) (*pb.Attr, error) {
 	return n.Attr, nil
 }
 
-func (o *OortFS) SetAttr(id []byte, attr *pb.Attr, v uint32) (*pb.Attr, error) {
+func (o *OortFS) SetAttr(ctx context.Context, id []byte, attr *pb.Attr, v uint32) (*pb.Attr, error) {
 	valid := fuse.SetattrValid(v)
-	b, err := o.GetChunk(id)
+	b, err := o.GetChunk(ctx, id)
 	if err != nil {
 		return &pb.Attr{}, err
 	}
@@ -272,7 +269,7 @@ func (o *OortFS) SetAttr(id []byte, attr *pb.Attr, v uint32) (*pb.Attr, error) {
 	if err != nil {
 		return &pb.Attr{}, err
 	}
-	err = o.WriteChunk(id, b)
+	err = o.WriteChunk(ctx, id, b)
 	if err != nil {
 		return &pb.Attr{}, err
 	}
@@ -280,9 +277,9 @@ func (o *OortFS) SetAttr(id []byte, attr *pb.Attr, v uint32) (*pb.Attr, error) {
 	return n.Attr, nil
 }
 
-func (o *OortFS) Create(parent, id []byte, inode uint64, name string, attr *pb.Attr, isdir bool) (string, *pb.Attr, error) {
+func (o *OortFS) Create(ctx context.Context, parent, id []byte, inode uint64, name string, attr *pb.Attr, isdir bool) (string, *pb.Attr, error) {
 	// Check to see if the name already exists
-	val, err := o.readGroupItem(parent, []byte(name))
+	val, err := o.readGroupItem(ctx, parent, []byte(name))
 	if err != nil && !store.IsNotFound(err) {
 		// TODO: Needs beter error handling
 		return "", &pb.Attr{}, err
@@ -300,7 +297,7 @@ func (o *OortFS) Create(parent, id []byte, inode uint64, name string, attr *pb.A
 	if err != nil {
 		return "", &pb.Attr{}, err
 	}
-	err = o.writeGroup(parent, []byte(name), b)
+	err = o.writeGroup(ctx, parent, []byte(name), b)
 	if err != nil {
 		return "", &pb.Attr{}, err
 	}
@@ -316,16 +313,16 @@ func (o *OortFS) Create(parent, id []byte, inode uint64, name string, attr *pb.A
 	if err != nil {
 		return "", &pb.Attr{}, err
 	}
-	err = o.WriteChunk(id, b)
+	err = o.WriteChunk(ctx, id, b)
 	if err != nil {
 		return "", &pb.Attr{}, err
 	}
 	return name, attr, nil
 }
 
-func (o *OortFS) Lookup(parent []byte, name string) (string, *pb.Attr, error) {
+func (o *OortFS) Lookup(ctx context.Context, parent []byte, name string) (string, *pb.Attr, error) {
 	// Get the id
-	b, err := o.readGroupItem(parent, []byte(name))
+	b, err := o.readGroupItem(ctx, parent, []byte(name))
 	if store.IsNotFound(err) {
 		return "", &pb.Attr{}, nil
 	} else if err != nil {
@@ -337,7 +334,7 @@ func (o *OortFS) Lookup(parent []byte, name string) (string, *pb.Attr, error) {
 		return "", &pb.Attr{}, err
 	}
 	// Get the Inode entry
-	b, err = o.GetChunk(d.Id)
+	b, err = o.GetChunk(ctx, d.Id)
 	if err != nil {
 		return "", &pb.Attr{}, err
 	}
@@ -364,10 +361,10 @@ func (d ByDirent) Less(i, j int) bool {
 	return d[i].Name < d[j].Name
 }
 
-func (o *OortFS) ReadDirAll(id []byte) (*pb.ReadDirAllResponse, error) {
+func (o *OortFS) ReadDirAll(ctx context.Context, id []byte) (*pb.ReadDirAllResponse, error) {
 	keyA, keyB := murmur3.Sum128(id)
 	// Get the keys from the group
-	items, err := o.gstore.LookupGroup(keyA, keyB)
+	items, err := o.gstore.LookupGroup(ctx, keyA, keyB)
 	log.Println("ITEMS: ", items)
 	if err != nil {
 		// TODO: Needs beter error handling
@@ -379,7 +376,7 @@ func (o *OortFS) ReadDirAll(id []byte) (*pb.ReadDirAllResponse, error) {
 	dirent := &pb.DirEntry{}
 	for _, item := range items {
 		// lookup the item in the group to get the id
-		_, b, err := o.gstore.Read(keyA, keyB, item.ChildKeyA, item.ChildKeyB, nil)
+		_, b, err := o.gstore.Read(ctx, keyA, keyB, item.ChildKeyA, item.ChildKeyB, nil)
 		if err != nil {
 			// TODO: Needs beter error handling
 			log.Println("Error with lookup: ", err)
@@ -390,7 +387,7 @@ func (o *OortFS) ReadDirAll(id []byte) (*pb.ReadDirAllResponse, error) {
 			return &pb.ReadDirAllResponse{}, err
 		}
 		// get the inode entry
-		b, err = o.GetChunk(dirent.Id)
+		b, err = o.GetChunk(ctx, dirent.Id)
 		if err != nil {
 			continue
 		}
@@ -410,9 +407,9 @@ func (o *OortFS) ReadDirAll(id []byte) (*pb.ReadDirAllResponse, error) {
 	return e, nil
 }
 
-func (o *OortFS) Remove(parent []byte, name string) (int32, error) {
+func (o *OortFS) Remove(ctx context.Context, parent []byte, name string) (int32, error) {
 	// Get the ID from the group list
-	b, err := o.readGroupItem(parent, []byte(name))
+	b, err := o.readGroupItem(ctx, parent, []byte(name))
 	if store.IsNotFound(err) {
 		return 1, nil
 	} else if err != nil {
@@ -425,21 +422,21 @@ func (o *OortFS) Remove(parent []byte, name string) (int32, error) {
 	}
 	// Remove the inode
 	// TODO: Need to delete more than just the inode
-	err = o.deleteValue(d.Id)
+	err = o.deleteValue(ctx, d.Id)
 	if err != nil {
 		return 1, err
 	}
 	// TODO: More error handling needed
 	// Remove from the group
-	err = o.deleteGroupItem(parent, []byte(name))
+	err = o.deleteGroupItem(ctx, parent, []byte(name))
 	if err != nil {
 		return 1, err // Not really sure what should be done here to try to recover from err
 	}
 	return 0, nil
 }
 
-func (o *OortFS) Update(id []byte, block, blocksize, size uint64, mtime int64) error {
-	b, err := o.GetChunk(id)
+func (o *OortFS) Update(ctx context.Context, id []byte, block, blocksize, size uint64, mtime int64) error {
+	b, err := o.GetChunk(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -464,16 +461,16 @@ func (o *OortFS) Update(id []byte, block, blocksize, size uint64, mtime int64) e
 	if err != nil {
 		return err
 	}
-	err = o.WriteChunk(id, b)
+	err = o.WriteChunk(ctx, id, b)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *OortFS) Symlink(parent, id []byte, name string, target string, attr *pb.Attr, inode uint64) (*pb.SymlinkResponse, error) {
+func (o *OortFS) Symlink(ctx context.Context, parent, id []byte, name string, target string, attr *pb.Attr, inode uint64) (*pb.SymlinkResponse, error) {
 	// Check to see if the name exists
-	val, err := o.readGroupItem(parent, []byte(name))
+	val, err := o.readGroupItem(ctx, parent, []byte(name))
 	if err != nil && !store.IsNotFound(err) {
 		// TODO: Needs beter error handling
 		return &pb.SymlinkResponse{}, err
@@ -493,7 +490,7 @@ func (o *OortFS) Symlink(parent, id []byte, name string, target string, attr *pb
 	if err != nil {
 		return &pb.SymlinkResponse{}, err
 	}
-	err = o.WriteChunk(id, b)
+	err = o.WriteChunk(ctx, id, b)
 	if err != nil {
 		return &pb.SymlinkResponse{}, err
 	}
@@ -507,15 +504,15 @@ func (o *OortFS) Symlink(parent, id []byte, name string, target string, attr *pb
 	if err != nil {
 		return &pb.SymlinkResponse{}, err
 	}
-	err = o.writeGroup(parent, []byte(name), b)
+	err = o.writeGroup(ctx, parent, []byte(name), b)
 	if err != nil {
 		return &pb.SymlinkResponse{}, err
 	}
 	return &pb.SymlinkResponse{Name: name, Attr: attr}, nil
 }
 
-func (o *OortFS) Readlink(id []byte) (*pb.ReadlinkResponse, error) {
-	b, err := o.GetChunk(id)
+func (o *OortFS) Readlink(ctx context.Context, id []byte) (*pb.ReadlinkResponse, error) {
+	b, err := o.GetChunk(ctx, id)
 	if err != nil {
 		return &pb.ReadlinkResponse{}, err
 	}
@@ -527,8 +524,8 @@ func (o *OortFS) Readlink(id []byte) (*pb.ReadlinkResponse, error) {
 	return &pb.ReadlinkResponse{Target: n.Target}, nil
 }
 
-func (o *OortFS) Getxattr(id []byte, name string) (*pb.GetxattrResponse, error) {
-	b, err := o.GetChunk(id)
+func (o *OortFS) Getxattr(ctx context.Context, id []byte, name string) (*pb.GetxattrResponse, error) {
+	b, err := o.GetChunk(ctx, id)
 	if err != nil {
 		return &pb.GetxattrResponse{}, err
 	}
@@ -543,8 +540,8 @@ func (o *OortFS) Getxattr(id []byte, name string) (*pb.GetxattrResponse, error) 
 	return &pb.GetxattrResponse{}, nil
 }
 
-func (o *OortFS) Setxattr(id []byte, name string, value []byte) (*pb.SetxattrResponse, error) {
-	b, err := o.GetChunk(id)
+func (o *OortFS) Setxattr(ctx context.Context, id []byte, name string, value []byte) (*pb.SetxattrResponse, error) {
+	b, err := o.GetChunk(ctx, id)
 	if err != nil {
 		return &pb.SetxattrResponse{}, err
 	}
@@ -558,16 +555,16 @@ func (o *OortFS) Setxattr(id []byte, name string, value []byte) (*pb.SetxattrRes
 	if err != nil {
 		return &pb.SetxattrResponse{}, err
 	}
-	err = o.WriteChunk(id, b)
+	err = o.WriteChunk(ctx, id, b)
 	if err != nil {
 		return &pb.SetxattrResponse{}, err
 	}
 	return &pb.SetxattrResponse{}, nil
 }
 
-func (o *OortFS) Listxattr(id []byte) (*pb.ListxattrResponse, error) {
+func (o *OortFS) Listxattr(ctx context.Context, id []byte) (*pb.ListxattrResponse, error) {
 	resp := &pb.ListxattrResponse{}
-	b, err := o.GetChunk(id)
+	b, err := o.GetChunk(ctx, id)
 	if err != nil {
 		return &pb.ListxattrResponse{}, err
 	}
@@ -585,8 +582,8 @@ func (o *OortFS) Listxattr(id []byte) (*pb.ListxattrResponse, error) {
 	return resp, nil
 }
 
-func (o *OortFS) Removexattr(id []byte, name string) (*pb.RemovexattrResponse, error) {
-	b, err := o.GetChunk(id)
+func (o *OortFS) Removexattr(ctx context.Context, id []byte, name string) (*pb.RemovexattrResponse, error) {
+	b, err := o.GetChunk(ctx, id)
 	if err != nil {
 		return &pb.RemovexattrResponse{}, err
 	}
@@ -600,16 +597,16 @@ func (o *OortFS) Removexattr(id []byte, name string) (*pb.RemovexattrResponse, e
 	if err != nil {
 		return &pb.RemovexattrResponse{}, err
 	}
-	err = o.WriteChunk(id, b)
+	err = o.WriteChunk(ctx, id, b)
 	if err != nil {
 		return &pb.RemovexattrResponse{}, err
 	}
 	return &pb.RemovexattrResponse{}, nil
 }
 
-func (o *OortFS) Rename(oldParent, newParent []byte, oldName, newName string) (*pb.RenameResponse, error) {
+func (o *OortFS) Rename(ctx context.Context, oldParent, newParent []byte, oldName, newName string) (*pb.RenameResponse, error) {
 	// Check if the new name already exists
-	id, err := o.readGroupItem(newParent, []byte(newName))
+	id, err := o.readGroupItem(ctx, newParent, []byte(newName))
 	if err != nil && !store.IsNotFound(err) {
 		// TODO: Needs beter error handling
 		return &pb.RenameResponse{}, err
@@ -618,7 +615,7 @@ func (o *OortFS) Rename(oldParent, newParent []byte, oldName, newName string) (*
 		return &pb.RenameResponse{}, nil
 	}
 	// Get the ID from the group list
-	b, err := o.readGroupItem(oldParent, []byte(oldName))
+	b, err := o.readGroupItem(ctx, oldParent, []byte(oldName))
 	if store.IsNotFound(err) {
 		return &pb.RenameResponse{}, nil
 	}
@@ -631,14 +628,14 @@ func (o *OortFS) Rename(oldParent, newParent []byte, oldName, newName string) (*
 		return &pb.RenameResponse{}, err
 	}
 	// Delete old entry
-	err = o.deleteGroupItem(oldParent, []byte(oldName))
+	err = o.deleteGroupItem(ctx, oldParent, []byte(oldName))
 	if err != nil {
 		return &pb.RenameResponse{}, err
 	}
 	// Create new entry
 	d.Name = newName
 	b, err = proto.Marshal(d)
-	err = o.writeGroup(newParent, []byte(newName), b)
+	err = o.writeGroup(ctx, newParent, []byte(newName), b)
 	if err != nil {
 		return &pb.RenameResponse{}, err
 	}

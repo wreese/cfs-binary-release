@@ -120,9 +120,6 @@ func NewServerTLSConfig(c *Config) (*tls.Config, error) {
 
 func NewGRPCClientDialOpt(c *Config) (grpc.DialOption, error) {
 	var opt grpc.DialOption
-	if c.InsecureSkipVerify {
-		return grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})), nil
-	}
 	tlsConf, err := NewClientTLSConfig(c)
 	if err != nil {
 		return opt, err

@@ -53,16 +53,6 @@ func ParseLevel(lvl string) (Level, error) {
 	return l, fmt.Errorf("not a valid logrus Level: %q", lvl)
 }
 
-// A constant exposing all logging levels
-var AllLevels = []Level{
-	PanicLevel,
-	FatalLevel,
-	ErrorLevel,
-	WarnLevel,
-	InfoLevel,
-	DebugLevel,
-}
-
 // These are the different logging levels. You can set the logging level to log
 // on your instance of logger, obtained with `logrus.New()`.
 const (
