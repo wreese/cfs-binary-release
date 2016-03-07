@@ -4,7 +4,7 @@ machine:
     - mkdir ~/go1.6
     - tar -C ~/go1.6 -xzf go1.6.linux-amd64.tar.gz
   environment:
-    GOROOT: ${HOME}/go1.5.3/go
+    GOROOT: ${HOME}/go1.6/go
     GO15VENDOREXPERIMENT: 0
     GOPATH: ${HOME}/go
     PATH: $GOPATH/bin:${GOROOT}/bin:${PATH}
