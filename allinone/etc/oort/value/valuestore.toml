@@ -10,9 +10,11 @@ ListenAddress = "0.0.0.0:6379"
 MaxClients = 8192
 Profile = false
 Debug = false
-InsecureSkipVerify = true
+InsecureSkipVerify = false
 CertFile = "/etc/oort/server.crt"
 KeyFile = "/etc/oort/server.key"
+CAFile = "/etc/oort/ca.pem"
+MutualTLS = true
 
 [ValueStoreConfig]
 Scale = 0.1
@@ -24,4 +26,5 @@ Path = "/data"
 UseTLS = true
 CertFile = "/etc/oort/server.crt"
 KeyFile = "/etc/oort/server.key"
-
+CAFile = "/etc/oort/ca.pem"
+MutualTLS = true
