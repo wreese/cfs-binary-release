@@ -161,7 +161,11 @@ go get github.com/creiht/formic/cfs
 go install github.com/creiht/formic/cfs
 cp -av $GOPATH/src/github.com/creiht/formic/packaging/root/usr/share/formicd/systemd/formicd.service /lib/systemd/system
 echo 'FORMICD_PORT=8445' > /etc/default/formicd
-
+echo 'FORMICD_INSECURE_SKIP_VERIFY=false' > /etc/default/formicd
+echo 'FORMICD_MUTUAL_TLS=true' > /etc/default/formicd
+echo 'FORMICD_CLIENT_CA_FILE=/etc/oort/ca.pem' > /etc/default/formicd
+echo 'FORMICD_CLIENT_CERT_FILE=/etc/oort/client.crt' > /etc/default/formicd
+echo 'FORMICD_CLIENT_KEY_FILE=/etc/oort/client.key' > /etc/default/formicd
 echo "Installing cfswrap and setting up the mount command"
 go get github.com/creiht/formic/cfswrap
 go install github.com/creiht/formic/cfswrap
