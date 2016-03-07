@@ -43,11 +43,11 @@
 		},
 		{
 			"ImportPath": "github.com/creiht/formic/flother",
-			"Rev": "29aa8dc9a0d6133445ba03eb1b95c877a8a5764a"
+			"Rev": "382e1b28351b9c546f53ee0684225575d5230f62"
 		},
 		{
 			"ImportPath": "github.com/creiht/formic/proto",
-			"Rev": "29aa8dc9a0d6133445ba03eb1b95c877a8a5764a"
+			"Rev": "382e1b28351b9c546f53ee0684225575d5230f62"
 		},
 		{
 			"ImportPath": "github.com/docker/go-connections/sockets",
@@ -134,7 +134,7 @@
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/ftls",
-			"Rev": "3cbd66107071a3003c987151fc6e3906227f1145"
+			"Rev": "c5f5495c19107b8da3319d24e20d30fdf08cf06a"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api",

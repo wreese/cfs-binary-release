@@ -30,7 +30,7 @@ source /$USER/.bashrc
 # sup3r sekret option to install vim-go and basic vim-go friendly .vimrc
 if [ "$FANCYVIM" = "yes" ]; then
     echo "Performing fancy vim install"
-    apt-get install vim-nox
+    apt-get install vim-nox -y --force-yes
     mkdir -p ~/.vim/autoload ~/.vim/bundle && curl -LSso ~/.vim/autoload/pathogen.vim https://tpo.pe/pathogen.vim
     go get golang.org/x/tools/cmd/goimports
     git clone https://github.com/fatih/vim-go.git ~/.vim/bundle/vim-go
@@ -66,6 +66,9 @@ go get github.com/gogo/protobuf/gogoproto
 go get github.com/gogo/protobuf/protoc-gen-gofast
 go get github.com/tools/godep
 go install github.com/tools/godep
+echo "Installing cfssl"
+go get -u github.com/cloudflare/cfssl/cmd/...
+echo "Done with cfssl, if it exploded you're still perfectly fine"
 
 echo "Setting up syndicate repo"
 mkdir -p $GOPATH/src/github.com/pandemicsyn
