@@ -25,7 +25,7 @@ var (
 	oortValueHost       = flag.String("oortvaluehost", "127.0.0.1:6379", "host:port to use when connecting to oort value")
 	oortGroupHost       = flag.String("oortgrouphost", "127.0.0.1:6380", "host:port to use when connecting to oort group")
 	insecureSkipVerify  = flag.Bool("skipverify", true, "don't verify cert")
-	oortCLientMutualTLS = flag.Bool("mutualtls", false, "whether or not the server expects mutual tls auth")
+	oortClientMutualTLS = flag.Bool("mutualtls", false, "whether or not the server expects mutual tls auth")
 	oortClientCert      = flag.String("oort-client-cert", "/etc/oort/client.crt", "cert file to use")
 	oortClientKey       = flag.String("oort-client-key", "/etc/oort/client.key", "key file to use")
 	oortClientCA        = flag.String("oort-client-ca", "/etc/oort/ca.pem", "ca file to use")
@@ -36,10 +36,6 @@ func FatalIf(err error, msg string) {
 	if err != nil {
 		grpclog.Fatalf("%s: %v", msg, err)
 	}
-}
-
-func oortClientCredentials() {
-
 }
 
 func main() {
@@ -80,8 +76,26 @@ func main() {
 		*keyFile = envkey
 	}
 
-	l, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
-	FatalIf(err, "Failed to bind to port")
+	envSkipVerify := os.Getenv("FORMICD_INSECURE_SKIP_VERIFY")
+	if envSkipVerify == "true" {
+		*insecureSkipVerify = true
+	}
+	envMutualTLS := os.Getenv("FORMICD_MUTUAL_TLS")
+	if envMutualTLS == "true" {
+		*oortClientMutualTLS = true
+	}
+	envClientCA := os.Getenv("FORMICD_CLIENT_CA_FILE")
+	if envClientCA != "" {
+		*oortClientCA = envClientCA
+	}
+	envClientCert := os.Getenv("FORMICD_CLIENT_CERT_FILE")
+	if envClientCert != "" {
+		*oortClientCert = envClientCert
+	}
+	envClientKey := os.Getenv("FORMICD_CLIENT_KEY_FILE")
+	if envClientKey != "" {
+		*oortClientKey = envClientKey
+	}
 
 	var opts []grpc.ServerOption
 	if *usetls {
@@ -91,7 +105,7 @@ func main() {
 	}
 	s := grpc.NewServer(opts...)
 	copt, err := ftls.NewGRPCClientDialOpt(&ftls.Config{
-		MutualTLS:          *oortCLientMutualTLS,
+		MutualTLS:          *oortClientMutualTLS,
 		InsecureSkipVerify: *insecureSkipVerify,
 		CertFile:           *oortClientCert,
 		KeyFile:            *oortClientKey,
@@ -104,6 +118,8 @@ func main() {
 	if err != nil {
 		grpclog.Fatalln(err)
 	}
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	FatalIf(err, "Failed to bind to port")
 	pb.RegisterApiServer(s, NewApiServer(fs))
 	grpclog.Printf("Starting up on %d...\n", *port)
 	s.Serve(l)
