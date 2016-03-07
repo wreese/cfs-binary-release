@@ -24,7 +24,7 @@ func NewTestFS() *TestFS {
 	}
 }
 
-func (fs *TestFS) GetChunk(id []byte) ([]byte, error) {
+func (fs *TestFS) GetChunk(ctx context.Context, id []byte) ([]byte, error) {
 	if len(fs.reads) > 0 {
 		chunk := fs.reads[0]
 		fs.reads = fs.reads[1:]
@@ -34,7 +34,7 @@ func (fs *TestFS) GetChunk(id []byte) ([]byte, error) {
 	}
 }
 
-func (fs *TestFS) WriteChunk(id, data []byte) error {
+func (fs *TestFS) WriteChunk(ctx context.Context, id, data []byte) error {
 	fs.writes = append(fs.writes, data)
 	return nil
 }
@@ -47,59 +47,59 @@ func (fs *TestFS) addread(d []byte) {
 	fs.reads = append(fs.reads, d)
 }
 
-func (ds *TestFS) GetAttr(id []byte) (*pb.Attr, error) {
+func (ds *TestFS) GetAttr(ctx context.Context, id []byte) (*pb.Attr, error) {
 	return &pb.Attr{}, nil
 }
 
-func (ds *TestFS) SetAttr(id []byte, attr *pb.Attr, valid uint32) (*pb.Attr, error) {
+func (ds *TestFS) SetAttr(ctx context.Context, id []byte, attr *pb.Attr, valid uint32) (*pb.Attr, error) {
 	return &pb.Attr{}, nil
 }
 
-func (ds *TestFS) Create(parent, id []byte, inode uint64, name string, attr *pb.Attr, isdir bool) (string, *pb.Attr, error) {
+func (ds *TestFS) Create(ctx context.Context, parent, id []byte, inode uint64, name string, attr *pb.Attr, isdir bool) (string, *pb.Attr, error) {
 	return name, attr, nil
 }
 
-func (ds *TestFS) Lookup(parent []byte, name string) (string, *pb.Attr, error) {
+func (ds *TestFS) Lookup(ctx context.Context, parent []byte, name string) (string, *pb.Attr, error) {
 	return "", &pb.Attr{}, nil
 }
 
-func (ds *TestFS) ReadDirAll(id []byte) (*pb.ReadDirAllResponse, error) {
+func (ds *TestFS) ReadDirAll(ctx context.Context, id []byte) (*pb.ReadDirAllResponse, error) {
 	return &pb.ReadDirAllResponse{}, nil
 }
 
-func (ds *TestFS) Remove(parent []byte, name string) (int32, error) {
+func (ds *TestFS) Remove(ctx context.Context, parent []byte, name string) (int32, error) {
 	return 1, nil
 }
 
-func (ds *TestFS) Update(id []byte, block, blocksize, size uint64, mtime int64) error {
+func (ds *TestFS) Update(ctx context.Context, id []byte, block, blocksize, size uint64, mtime int64) error {
 	return nil
 }
 
-func (ds *TestFS) Symlink(parent, id []byte, name string, target string, attr *pb.Attr, inode uint64) (*pb.SymlinkResponse, error) {
+func (ds *TestFS) Symlink(ctx context.Context, parent, id []byte, name string, target string, attr *pb.Attr, inode uint64) (*pb.SymlinkResponse, error) {
 	return &pb.SymlinkResponse{}, nil
 }
 
-func (ds *TestFS) Readlink(id []byte) (*pb.ReadlinkResponse, error) {
+func (ds *TestFS) Readlink(ctx context.Context, id []byte) (*pb.ReadlinkResponse, error) {
 	return &pb.ReadlinkResponse{}, nil
 }
 
-func (ds *TestFS) Getxattr(id []byte, name string) (*pb.GetxattrResponse, error) {
+func (ds *TestFS) Getxattr(ctx context.Context, id []byte, name string) (*pb.GetxattrResponse, error) {
 	return &pb.GetxattrResponse{}, nil
 }
 
-func (ds *TestFS) Setxattr(id []byte, name string, value []byte) (*pb.SetxattrResponse, error) {
+func (ds *TestFS) Setxattr(ctx context.Context, id []byte, name string, value []byte) (*pb.SetxattrResponse, error) {
 	return &pb.SetxattrResponse{}, nil
 }
 
-func (ds *TestFS) Listxattr(id []byte) (*pb.ListxattrResponse, error) {
+func (ds *TestFS) Listxattr(ctx context.Context, id []byte) (*pb.ListxattrResponse, error) {
 	return &pb.ListxattrResponse{}, nil
 }
 
-func (ds *TestFS) Removexattr(id []byte, name string) (*pb.RemovexattrResponse, error) {
+func (ds *TestFS) Removexattr(ctx context.Context, id []byte, name string) (*pb.RemovexattrResponse, error) {
 	return &pb.RemovexattrResponse{}, nil
 }
 
-func (ds *TestFS) Rename(oldParent, newParent []byte, oldName, newName string) (*pb.RenameResponse, error) {
+func (ds *TestFS) Rename(ctx context.Context, oldParent, newParent []byte, oldName, newName string) (*pb.RenameResponse, error) {
 	return &pb.RenameResponse{}, nil
 }
 func TestGetID(t *testing.T) {
