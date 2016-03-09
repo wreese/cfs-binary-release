@@ -3,12 +3,10 @@ package ring
 import (
 	"bytes"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math"
 	"net"
@@ -16,6 +14,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/pandemicsyn/ftls"
 )
 
 type LogFunc func(format string, v ...interface{})
@@ -136,58 +136,14 @@ type TCPMsgRing struct {
 	chaosAddrDisconnectsLock sync.RWMutex
 	chaosAddrDisconnects     map[string]bool
 
-	useTLS             bool
-	mutualTLS          bool
-	certFile           string
-	keyFile            string
-	caFile             string
-	insecureSkipVerify bool
-	serverTLSConfig    *tls.Config
-	clientCertLock     sync.RWMutex
-	clientCert         tls.Certificate
-	clientCAPool       *x509.CertPool
-}
-
-func newServerTLSConfig(certFile, keyFile, caFile string, insecureSkipVerify, mutualTLS bool) (*tls.Config, error) {
-	tlsConf := &tls.Config{}
-	if mutualTLS {
-		caCert, err := ioutil.ReadFile(caFile)
-		if err != nil {
-			return nil, fmt.Errorf("Unable to load ca cert %s: %s", caFile, err.Error())
-		}
-		clientCertPool := x509.NewCertPool()
-		if ok := clientCertPool.AppendCertsFromPEM(caCert); !ok {
-			return nil, fmt.Errorf("Unable to append cert %s to pool.", caFile)
-		}
-		tlsConf = &tls.Config{
-			ClientAuth: tls.RequireAndVerifyClientCert,
-			ClientCAs:  clientCertPool,
-		}
-		tlsConf.BuildNameToCertificate()
-	}
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return nil, err
-	}
-	tlsConf.Certificates = []tls.Certificate{cert}
-	tlsConf.InsecureSkipVerify = insecureSkipVerify
-	return tlsConf, nil
-}
-
-func newClientCertAndPool(certFile, keyFile, caFile string) (cert tls.Certificate, pool *x509.CertPool, err error) {
-	cert, err = tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return cert, pool, err
-	}
-	pool = x509.NewCertPool()
-	if caFile != "" {
-		clientCACert, err := ioutil.ReadFile(caFile)
-		if err != nil {
-			return cert, pool, err
-		}
-		pool.AppendCertsFromPEM(clientCACert)
-	}
-	return cert, pool, err
+	useTLS          bool
+	mutualTLS       bool
+	certFile        string
+	keyFile         string
+	caFile          string
+	skipVerify      bool
+	serverTLSConfig *tls.Config
+	clientTLSConfig *tls.Config
 }
 
 // NewTCPMsgRing creates a new MsgRing that will use TCP to send and receive
@@ -214,7 +170,7 @@ func NewTCPMsgRing(c *TCPMsgRingConfig) (*TCPMsgRing, error) {
 		certFile:                   cfg.CertFile,
 		keyFile:                    cfg.KeyFile,
 		caFile:                     cfg.CAFile,
-		insecureSkipVerify:         cfg.SkipVerify,
+		skipVerify:                 cfg.SkipVerify,
 	}
 	if t.logCritical == nil {
 		t.logCritical = nilLogFunc
@@ -224,11 +180,14 @@ func NewTCPMsgRing(c *TCPMsgRingConfig) (*TCPMsgRing, error) {
 	}
 	if t.useTLS {
 		var err error
-		t.serverTLSConfig, err = newServerTLSConfig(t.certFile, t.keyFile, t.caFile, t.insecureSkipVerify, t.mutualTLS)
+		ftlsConfig := ftls.DefaultServerFTLSConf(t.certFile, t.keyFile, t.caFile)
+		ftlsConfig.MutualTLS = t.mutualTLS
+		ftlsConfig.InsecureSkipVerify = t.skipVerify
+		t.serverTLSConfig, err = ftls.NewServerTLSConfig(ftlsConfig)
 		if err != nil {
 			return nil, err
 		}
-		t.clientCert, t.clientCAPool, err = newClientCertAndPool(t.certFile, t.keyFile, t.caFile)
+		t.clientTLSConfig, err = ftls.NewClientTLSConfig(ftlsConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -359,18 +318,6 @@ func (t *TCPMsgRing) MsgToOtherReplicas(msg Msg, partition uint32, timeout time.
 	go mmsg.freer(toAddrs)
 }
 
-func verifyClientAddrMatch(c *tls.Conn) error {
-	err := c.Handshake()
-	if err != nil {
-		return err
-	}
-	addr, _, err := net.SplitHostPort(c.RemoteAddr().String())
-	if err != nil {
-		return err
-	}
-	return c.ConnectionState().VerifiedChains[0][0].VerifyHostname(addr)
-}
-
 // Listen on the configured TCP port, accepting new connections and processing
 // messages from those connections; this function will not return until
 // t.Shutdown() is called.
@@ -418,7 +365,7 @@ OuterLoop:
 				netConn, err = l.Accept()
 				if err == nil {
 					if t.mutualTLS {
-						err = verifyClientAddrMatch(netConn.(*tls.Conn))
+						err = ftls.VerifyClientAddrMatch(netConn.(*tls.Conn))
 						if err != nil {
 							t.logCritical("Client address != any cert names")
 						}
@@ -599,22 +546,6 @@ func (t *TCPMsgRing) handshake(netConn net.Conn) (string, error) {
 	return addr, nil
 }
 
-func (t *TCPMsgRing) newClientTLSConfig(addr string) *tls.Config {
-	if t.insecureSkipVerify {
-		return &tls.Config{ServerName: "", InsecureSkipVerify: true}
-	}
-	serverName, _, _ := net.SplitHostPort(addr)
-	t.clientCertLock.RLock()
-	tlsConf := &tls.Config{
-		Certificates: []tls.Certificate{t.clientCert},
-		RootCAs:      t.clientCAPool,
-		ServerName:   serverName,
-	}
-	tlsConf.BuildNameToCertificate()
-	t.clientCertLock.RUnlock()
-	return tlsConf
-}
-
 func (t *TCPMsgRing) connection(addr string, netConn net.Conn, msgChan chan Msg, dialOk bool) {
 OuterLoop:
 	for {
@@ -644,7 +575,9 @@ OuterLoop:
 				baseConn, err = net.DialTimeout("tcp", addr, t.connectTimeout)
 				if err == nil {
 					if t.useTLS {
-						netConn = tls.Client(baseConn, t.newClientTLSConfig(addr))
+						c := t.clientTLSConfig
+						c.ServerName = addr
+						netConn = tls.Client(baseConn, c)
 					} else {
 						netConn = baseConn
 					}

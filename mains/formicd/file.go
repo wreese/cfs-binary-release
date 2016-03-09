@@ -66,16 +66,14 @@ func NewOortFS(vaddr, gaddr string, grpcOpts ...grpc.DialOption) (*OortFS, error
 		gaddr:  gaddr,
 		hasher: crc32.NewIEEE,
 	}
-	// TODO: The context.Background() calls likely need to be replaced with
-	// actual contexts having a timeouts.
 	// TODO: These 10s here are the number of grpc streams the api can make per
 	// request type; should likely be configurable somewhere along the line,
 	// but hardcoded for now.
-	o.vstore, err = api.NewValueStore(context.Background(), vaddr, 10, grpcOpts...)
+	o.vstore, err = api.NewValueStore(vaddr, 10, grpcOpts...)
 	if err != nil {
 		return &OortFS{}, err
 	}
-	o.gstore, err = api.NewGroupStore(context.Background(), gaddr, 10, grpcOpts...)
+	o.gstore, err = api.NewGroupStore(gaddr, 10, grpcOpts...)
 	if err != nil {
 		return &OortFS{}, err
 	}
@@ -83,6 +81,8 @@ func NewOortFS(vaddr, gaddr string, grpcOpts ...grpc.DialOption) (*OortFS, error
 	// NOTE: This also means that it is only single user until we init filesystems out of band
 	// Init the root node
 	id := GetID(1, 1, 1, 0)
+	// TODO: The context.Background() calls likely need to be replaced with
+	// actual contexts having a timeouts.
 	n, err := o.GetChunk(context.Background(), id)
 	if len(n) == 0 {
 		log.Println("Root node not found, creating new root")
