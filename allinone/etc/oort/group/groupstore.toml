@@ -6,7 +6,6 @@ UseTLS = true
 Enabled = true
 
 [OortGroupStoreConfig]
-ListenAddress = "0.0.0.0:6380"
 MaxClients = 8192
 Profile = false
 Debug = false
