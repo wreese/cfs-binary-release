@@ -6,7 +6,6 @@ UseTLS = true
 Enabled = true
 
 [OortValueStoreConfig]
-ListenAddress = "0.0.0.0:6379"
 MaxClients = 8192
 Profile = false
 Debug = false
