@@ -105,12 +105,12 @@ mkdir -p /etc/syndicate/ring
 mkdir -p /var/lib/oort-value/ring /var/lib/oort-value/data
 mkdir -p /var/lib/oort-group/ring /var/lib/oort-group/data
 cp -av allinone/etc/syndicate/* /etc/syndicate
-ln -s /var/lib/oort-value/server.key /etc/syndicate/cfss/localhost-key.pem
-ln -s /var/lib/oort-value/server.crt /etc/syndicate/cfss/localhost.pem
-ln -s /var/lib/oort-value/ca.pem /etc/syndicate/cfss/ca.pem
-ln -s /var/lib/oort-group/server.key /etc/syndicate/cfss/localhost-key.pem
-ln -s /var/lib/oort-group/server.crt /etc/syndicate/cfss/localhost.pem
-ln -s /var/lib/oort-group/ca.pem /etc/syndicate/cfss/ca.pem
+ln -s /etc/syndicate/cfssl/localhost-key.pem /var/lib/oort-value/server.key
+ln -s /etc/syndicate/cfssl/localhost.pem /var/lib/oort-value/server.crt
+ln -s /etc/syndicate/cfssl/ca.pem /var/lib/oort-value/ca.pem
+ln -s /etc/syndicate/cfssl/localhost-key.pem /var/lib/oort-group/server.key
+ln -s /etc/syndicate/cfssl/localhost.pem /var/lib/oort-group/server.crt
+ln -s /etc/syndicate/cfssl/ca.pem /var/lib/oort-group/ca.pem
 
 echo "Install ring deps"
 go install github.com/gholt/ring/ring
