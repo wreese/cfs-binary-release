@@ -5,9 +5,9 @@ Port = 8443
 MsgRingPort = 8001
 CmdCtrlPort = 4444
 StorePort = 6379
-CertFile = "/etc/oort/server.crt"
-KeyFile = "/etc/oort/server.key"
-RingDir = "/etc/oort/ring/value"
+CertFile = "/etc/syndicate/server.crt"
+KeyFile = "/etc/syndicate/server.key"
+RingDir = "/etc/syndicate/ring"
 WeightAssignment = "self"
 
 [groupstore]
@@ -17,9 +17,9 @@ Port = 8444
 MsgRingPort = 8002
 CmdCtrlPort = 4445
 StorePort = 6380
-CertFile = "/etc/oort/server.crt"
-KeyFile = "/etc/oort/server.key"
-RingDir = "/etc/oort/ring/group"
+CertFile = "/etc/syndicate/server.crt"
+KeyFile = "/etc/syndicate/server.key"
+RingDir = "/etc/syndicate/ring"
 WeightAssignment = "self"
 
 #[llamasherpaderpa2000]

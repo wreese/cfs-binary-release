@@ -8,7 +8,7 @@ cfssl and its utils should have been install by the allineone.sh script into you
 go get -u github.com/cloudflare/cfssl/cmd/...
 ```
 
-See: [https://github.com/cloudflare/cfssl](https://github.com/cloudflare/cfssl) for further info. You'll find a preconfigured ca-config.json, ca cert/key, and sample client configs in /etc/oort/cfssl. The instructions that follow will let you configure CFSSL from scratch (and using your hostnames/ip's if you desire).
+See: [https://github.com/cloudflare/cfssl](https://github.com/cloudflare/cfssl) for further info. You'll find a preconfigured ca-config.json, ca cert/key, and sample client configs in /etc/syndicate/cfssl. The instructions that follow will let you configure CFSSL from scratch (and using your hostnames/ip's if you desire).
 
 ## Initialize a new Certificate Authority
 
