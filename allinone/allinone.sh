@@ -99,40 +99,31 @@ git clone git@github.com:$GIT_USER/cfs-binary-release.git
 cd cfs-binary-release
 git remote add upstream git@github.com:getcfs/cfs-binary-release.git
 
-echo "Prepping /etc"
+echo "Prepping /etc & /var/lib"
 cd $GOPATH/src/github.com/getcfs/cfs-binary-release
-mkdir -p /etc/oort/ring
-mkdir -p /etc/oort/value /etc/oort/group
-cp -av allinone/etc/oort/* /etc/oort
+mkdir -p /etc/syndicate/ring
+mkdir -p /var/lib/oort-value/ring /var/lib/oort-value/data
+mkdir -p /var/lib/oort-group/ring /var/lib/oort-group/data
+cp -av allinone/etc/syndicate/* /etc/syndicate
+ln -s /etc/syndicate/cfssl/localhost-key.pem /var/lib/oort-value/server.key
+ln -s /etc/syndicate/cfssl/localhost.pem /var/lib/oort-value/server.crt
+ln -s /etc/syndicate/cfssl/ca.pem /var/lib/oort-value/ca.pem
+ln -s /etc/syndicate/cfssl/localhost-key.pem /var/lib/oort-group/server.key
+ln -s /etc/syndicate/cfssl/localhost.pem /var/lib/oort-group/server.crt
+ln -s /etc/syndicate/cfssl/ca.pem /var/lib/oort-group/ca.pem
 
 echo "Install ring deps"
 go install github.com/gholt/ring/ring
 go get github.com/pandemicsyn/ringver
 go install github.com/pandemicsyn/ringver
 
-echo "Setting up valuestore rings"
-mkdir -p /etc/oort/ring/value
-ring /etc/oort/ring/value/valuestore.builder create replicas=1 config-file=/etc/oort/valuestore.toml
-ring /etc/oort/ring/value/valuestore.builder add active=true capacity=1000 tier0=removeme
-ring /etc/oort/ring/value/valuestore.builder ring
-RINGVER=`ringver /etc/oort/ring/value/valuestore.ring`
-cp -av /etc/oort/ring/value/valuestore.ring /etc/oort/ring/value/$RINGVER-valuestore.ring
-cp -av /etc/oort/ring/value/valuestore.builder /etc/oort/ring/value/$RINGVER-valuestore.builder
-
-echo "Setting up groupstore rings"
-mkdir -p /etc/oort/ring/group
-ring /etc/oort/ring/group/groupstore.builder create replicas=1 config-file=/etc/oort/groupstore.toml
-ring /etc/oort/ring/group/groupstore.builder add active=true capacity=1000 tier0=removeme
-ring /etc/oort/ring/group/groupstore.builder ring
-RINGVER=`ringver /etc/oort/ring/group/groupstore.ring`
-cp -av /etc/oort/ring/group/groupstore.ring /etc/oort/ring/group/$RINGVER-groupstore.ring
-cp -av /etc/oort/ring/group/groupstore.builder /etc/oort/ring/group/$RINGVER-groupstore.builder
-
 echo "Installing synd"
 cd $GOPATH/src/github.com/pandemicsyn/syndicate
 cp -av packaging/root/usr/share/syndicate/systemd/synd.service /lib/systemd/system
 go get github.com/pandemicsyn/syndicate/synd
 make install
+echo "setting up first rings with dummy nodes"
+make ring
 systemctl daemon-reload
 
 echo "Installing oort-valued"
@@ -151,9 +142,6 @@ cp -av packaging/root/usr/share/oort/systemd/oort-groupd.service /lib/systemd/sy
 echo "OORT_GROUP_SYNDICATE_OVERRIDE=127.0.0.1:8444" >> /etc/default/oort-groupd
 systemctl daemon-reload
 
-echo "Creating data dir"
-mkdir -v -p /data
-
 echo "Installing formicd & cfs"
 go get github.com/creiht/formic/formicd
 go install github.com/creiht/formic/formicd
@@ -163,9 +151,9 @@ cp -av $GOPATH/src/github.com/creiht/formic/packaging/root/usr/share/formicd/sys
 echo 'FORMICD_PORT=8445' > /etc/default/formicd
 echo 'FORMICD_INSECURE_SKIP_VERIFY=false' >> /etc/default/formicd
 echo 'FORMICD_MUTUAL_TLS=true' >> /etc/default/formicd
-echo 'FORMICD_CLIENT_CA_FILE=/etc/oort/ca.pem' >> /etc/default/formicd
-echo 'FORMICD_CLIENT_CERT_FILE=/etc/oort/client.crt' >> /etc/default/formicd
-echo 'FORMICD_CLIENT_KEY_FILE=/etc/oort/client.key' >> /etc/default/formicd
+echo 'FORMICD_CLIENT_CA_FILE=/etc/syndicate/ca.pem' >> /etc/default/formicd
+echo 'FORMICD_CLIENT_CERT_FILE=/etc/syndicate/client.crt' >> /etc/default/formicd
+echo 'FORMICD_CLIENT_KEY_FILE=/etc/syndicate/client.key' >> /etc/default/formicd
 echo "Installing cfswrap and setting up the mount command"
 go get github.com/creiht/formic/cfswrap
 go install github.com/creiht/formic/cfswrap
