@@ -191,6 +191,11 @@ if [ "$STABLEDEPLOY" = "yes" ]; then
     fi
 fi
 
+echo "generating custom ssl cert, this might break...then you'll have to do it yourself...you lazy bum"
+cd /etc/syndicate/cfssl
+sed -e "s/TENDOTME/$TENDOT/g" /etc/syndicate/cfssl/localhost.json.tmpl | sed -e "s/HOSTNAMEME/`hostname -f`/g" > /etc/syndicate/cfssl/localhost.json
+cfssl gencert -ca=/etc/syndicate/cfssl/ca.pem -ca-key=/etc/syndicate/cfssl/ca-key.pem -config=/etc/syndicate/cfssl/ca-config.json -profile=client-server /etc/syndicate/cfssl/localhost.json | cfssljson -bare localhost
+
 echo
 echo "To start services run:"
 echo "systemctl start synd"
