@@ -1,0 +1,31 @@
+
+sessionname fsaaas
+
+# Start an empty shell at the front of the line
+screen -t system 0
+
+# Start the services
+ screen -t syndicate 1
+ stuff "systemctl start synd && journalctl -f -u synd\012"
+
+ screen -t syndicate-client 2
+
+ screen -t oort-valued 3
+ stuff "systemctl start oort-valued && journalctl -f -u oort-valued\012"
+
+ screen -t oort-group 4
+ stuff "systemctl start oort-groupd && journalctl -f -u oort-groupd\012"
+
+ screen -t oort-cli 5
+
+ screen -t formicd 6
+ stuff "systemctl start formicd && journalctl -f -u formicd\012"
+
+ screen -t cfsfuse 7
+
+ screen -t testbed 8
+
+ screen -t acctd 9
+
+ screen -t oohhc-cli 10
+
