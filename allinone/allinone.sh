@@ -92,6 +92,14 @@ git clone git@github.com:$GIT_USER/formic.git
 cd formic
 git remote add upstream git@github.com:creiht/formic.git
 
+echo "Setting up oohhc repos"
+mkdir -p $GOPATH/src/github.com/letterj
+cd $GOPATH/src/github.com/letterj
+git clone git@github.com:$GIT_USER/oohhc.git
+cd oohhc
+git remote add upstream git@github.com:letterj/oohhc.git
+make deps
+
 echo "Setting up cfs-binary-release repo"
 mkdir -p $GOPATH/src/github.com/getcfs/cfs-binary-release
 cd $GOPATH/src/github.com/getcfs
@@ -164,6 +172,27 @@ go get github.com/creiht/formic/cfswrap
 go install github.com/creiht/formic/cfswrap
 ln -sf $GOPATH/bin/cfswrap /sbin/mount.cfs
 
+echo "Installing oohhc-acctd & oohhc-cli"
+go get github.com/letterj/oohhc/oohhc-acctd
+go install github.com/letterj/oohhc/oohhc-acctd
+go get github.com/letterj/oohhc/oohhc-cli
+go install github.com/oohhc/oohhc-cli
+cp -av $GOPATH/src/github.com/letterj/oohhc/packaging/root/usr/share/oohhc-acctd/systemd/oohhc-acctd.service /lib/systemd/system
+SUPERKEY=$(python -c "import uuid; print uuid.uuid4()")
+echo 'OOHHC_ACCT_PORT=8449' > /etc/default/oohhc-acctd
+echo "OOHHC_ACCT_OORT_GROUP_HOST=$TENDOT:6380" >> /etc/default/oohhc-acctd
+echo 'OOHHC_ACCT_TLS=true' >> /etc/default/oohhc-acctd
+echo "OOHHC_ACCT_SUPERUSER_KEY=$SUPERKEY" >> /etc/default/oohhc-acctd
+echo 'OOHHC_ACCT_SKIP_VERIFY=false' >> /etc/default/oohhc-acctd
+echo 'OOHHC_ACCT_CERT_FILE=/etc/syndicate/server.crt' >> /etc/default/oohhc-acctd
+echo 'OOHHC_ACCT_KEY_FILE=/etc/syndicate/server.key' >> /etc/default/oohhc-acctd
+echo 'OOHHC_ACCT_GS_MUTUALTLS=true' >> /etc/default/oohhc-acctd
+echo 'OOHHC_ACCT_GS_CA_FILE=/etc/syndicate/ca.pem' >> /etc/default/oohhc-acctd
+echo 'OOHHC_ACCT_GS_CERT_FILE=/etc/syndicate/client.crt' >> /etc/default/oohhc-acctd
+echo 'OOHHC_ACCT_GS_KEY_FILE=/etc/syndicate/client.key' >> /etc/default/oohhc-acctd
+echo 'OOHHC_ACCT_GS_SKIP_VERIFY=false' >> /etc/default/oohhc-acctd
+
+
 
 # Adding some helpful git stuff to the .bashrc
 if [ "$FANCYPROMPT" = "yes" ]; then
@@ -202,6 +231,12 @@ echo "systemctl start synd"
 echo "systemctl start oort-valued"
 echo "systemctl start oort-groupd"
 echo "systemctl start formicd"
+echo "systemctl start oohhc-acctd"
+echo
+echo "You can add accounts with oohhc-cli"
+echo "Example:"
+echo "oohhc-cli -k $SUPERKEY create -N testco"
+echo
 echo "!! Don't forget to remove the place holder nodes from the ring once you've started your nodes"
 echo ""
 echo "For example: to create a cfsfuse mount point create the location and run the mount command:"
