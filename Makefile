@@ -14,7 +14,7 @@ VERSION := $(shell python -c 'import sys, json; print [x["Rev"] for x in json.lo
 
 world: sync-all save update
 
-sync-all: oort-cli oort-value oort-group syndicate cfsdvp cfs formic
+sync-all: oort-cli oort-value oort-group syndicate cfsdvp cfs cfswrap formic oohhc-acct oohhc-cli
 
 save:
 	godep save -v ./...
@@ -36,6 +36,9 @@ build:
 	godep go build -i -v -o build/cfsdvp github.com/getcfs/cfs-binary-release/mains/cfsdvp
 	godep go build -i -v -o build/cfs github.com/getcfs/cfs-binary-release/mains/cfs
 	godep go build -i -v -o build/formicd github.com/getcfs/cfs-binary-release/mains/formicd
+	godep go build -i -v -o build/cfswrap github.com/getcfs/cfs-binary-release/mains/cfswrap
+	godep go build -i -v -o build/oohhc-acctd github.com/getcfs/cfs-binary-release/mains/oohhc-acctd
+	godep go build -i -v -o build/oohhc-cli github.com/getcfs/cfs-binary-release/mains/oohhc-cli
 
 install:
 	godep go install -v ./...
@@ -69,7 +72,14 @@ cfsdvp:
 cfs:
 	cp -av $(OGOPATH)/src/github.com/creiht/formic/cfs $(SRCPATH)
 
+cfswrap:
+	cp -av $(OGOPATH)/src/github.com/creiht/formic/cfswrap $(SRCPATH)
+
 formic:
 	cp -av $(OGOPATH)/src/github.com/creiht/formic/formicd $(SRCPATH)
 
+oohhc-acct:
+	cp -av $(OGOPATH)/src/github.com/letterj/oohhc/oohhc-acctd $(SRCPATH)
 
+oohhc-cli:
+	cp -av $(OGOPATH)/src/github.com/letterj/oohhc/oohhc-cli $(SRCPATH)
