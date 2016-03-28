@@ -176,8 +176,8 @@ echo "Installing oohhc-acctd & oohhc-cli"
 go get github.com/letterj/oohhc/oohhc-acctd
 go install github.com/letterj/oohhc/oohhc-acctd
 go get github.com/letterj/oohhc/oohhc-cli
-go install github.com/oohhc/oohhc-cli
-cp -av $GOPATH/src/github.com/letterj/oohhc/packaging/root/usr/share/oohhc-acctd/systemd/oohhc-acctd.service /lib/systemd/system
+go install github.com/letterj/oohhc/oohhc-cli
+cp -av $GOPATH/src/github.com/letterj/oohhc/packaging/root/usr/share/oohhc/systemd/oohhc-acctd.service /lib/systemd/system
 SUPERKEY=$(python -c "import uuid; print uuid.uuid4()")
 echo 'OOHHC_ACCT_PORT=8449' > /etc/default/oohhc-acctd
 echo "OOHHC_ACCT_OORT_GROUP_HOST=$TENDOT:6380" >> /etc/default/oohhc-acctd
