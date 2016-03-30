@@ -139,7 +139,6 @@ go get github.com/pandemicsyn/oort/oort-valued
 go install github.com/pandemicsyn/oort/oort-valued
 cd $GOPATH/src/github.com/pandemicsyn/oort
 cp -av packaging/root/usr/share/oort/systemd/oort-valued.service /lib/systemd/system
-echo "OORT_VALUE_SYNDICATE_OVERRIDE=127.0.0.1:8443" >> /etc/default/oort-valued
 systemctl daemon-reload
 
 echo "Installing oort-groupd"
@@ -147,7 +146,6 @@ go get github.com/pandemicsyn/oort/oort-groupd
 go install github.com/pandemicsyn/oort/oort-groupd
 cd $GOPATH/src/github.com/pandemicsyn/oort
 cp -av packaging/root/usr/share/oort/systemd/oort-groupd.service /lib/systemd/system
-echo "OORT_GROUP_SYNDICATE_OVERRIDE=127.0.0.1:8444" >> /etc/default/oort-groupd
 systemctl daemon-reload
 
 echo "Installing formicd & cfs"
@@ -157,16 +155,6 @@ go get github.com/creiht/formic/cfs
 go install github.com/creiht/formic/cfs
 cp -av $GOPATH/src/github.com/creiht/formic/packaging/root/usr/share/formicd/systemd/formicd.service /lib/systemd/system
 TENDOT=$(ifconfig | awk -F "[: ]+" '/inet addr:/ { if ($4 != "127.0.0.1") print $4 }' | egrep "^10\.")
-echo 'FORMICD_PORT=8445' > /etc/default/formicd
-echo "FORMICD_OORT_VALUE_HOST=$TENDOT:6379" >> /etc/default/formicd
-echo "FORMICD_OORT_GROUP_HOST=$TENDOT:6380" >> /etc/default/formicd
-echo 'FORMICD_INSECURE_SKIP_VERIFY=false' >> /etc/default/formicd
-echo 'FORMICD_CERT_FILE=/etc/syndicate/server.crt' >> /etc/default/formicd
-echo 'FORMICD_KEY_FILE=/etc/syndicate/server.key' >> /etc/default/formicd
-echo 'FORMICD_MUTUAL_TLS=true' >> /etc/default/formicd
-echo 'FORMICD_CLIENT_CA_FILE=/etc/syndicate/ca.pem' >> /etc/default/formicd
-echo 'FORMICD_CLIENT_CERT_FILE=/etc/syndicate/client.crt' >> /etc/default/formicd
-echo 'FORMICD_CLIENT_KEY_FILE=/etc/syndicate/client.key' >> /etc/default/formicd
 echo "Installing cfswrap and setting up the mount command"
 go get github.com/creiht/formic/cfswrap
 go install github.com/creiht/formic/cfswrap
