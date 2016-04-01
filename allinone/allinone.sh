@@ -197,7 +197,7 @@ fi
 if [ "$STABLEDEPLOY" = "yes" ]; then
     echo "STABLEDEPLOY=yes so install'ing binaries from cfs-binary-release"
     cd $GOPATH/src/github.com/getcfs/cfs-binary-release
-    git pull upstream
+    git pull upstream master
     git fetch -t upstream
     if [ "$CFSRELEASE" = "" ]; then
         echo "CFSRELEASE not specified so using latest"
