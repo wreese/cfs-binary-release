@@ -3,40 +3,6 @@ syntax = "proto3";
 package proto;
 
 
-service RingDist {
-    rpc Store(RingMsg) returns (StoreResult) {}
-    rpc Revert(RingMsg) returns (StoreResult) {}
-    rpc Status(StatusRequest) returns (StatusMsg) {}
-    rpc Setup(RingMsg) returns (StoreResult) {}
-}
-
-message RingMsg {
-    int64 version = 1;
-    bytes ring = 2;
-    bytes builder = 3;
-    int64 deadline = 4; //not used right now
-    int64 rollback = 5; //not used right now
-}
-
-message StoreResult {
-    int64 version = 1;
-    bool ring = 2;
-    bool builder = 3;
-    string ErrMsg = 4;
-}
-
-message StatusRequest {
-    bool ring = 1;
-    bool builder = 2;
-}
-
-message StatusMsg {
-    int64 version = 1;
-    string ringstats = 2;
-    string builderstats = 3;
-    string master = 4;
-}
-
 service Syndicate {
     rpc AddNode(Node) returns (RingStatus) {}
     rpc RemoveNode(Node) returns (RingStatus) {}
@@ -51,6 +17,7 @@ service Syndicate {
     rpc GetNodeConfig(Node) returns (RingConf) {}
     rpc SearchNodes(Node) returns (SearchResult) {}
     rpc GetRing(EmptyMsg) returns (Ring) {}
+    rpc GetRingStream(SubscriberID) returns (stream Ring) {}
     rpc RegisterNode(RegisterRequest) returns (NodeConfig) {}
 }
 
@@ -87,6 +54,10 @@ message Conf {
     bool  restartRequired = 2;
 }
 
+message SubscriberID {
+    string id = 1;
+}
+
 message RegisterRequest {
     string hostname = 1;
     repeated string addrs = 2;
@@ -120,4 +91,40 @@ message Ring {
 
 message SearchResult {
     repeated Node nodes = 1;
+}
+
+
+
+service RingDist {
+    rpc Store(RingMsg) returns (StoreResult) {}
+    rpc Revert(RingMsg) returns (StoreResult) {}
+    rpc Status(StatusRequest) returns (StatusMsg) {}
+    rpc Setup(RingMsg) returns (StoreResult) {}
+}
+
+message RingMsg {
+    int64 version = 1;
+    bytes ring = 2;
+    bytes builder = 3;
+    int64 deadline = 4; //not used right now
+    int64 rollback = 5; //not used right now
+}
+
+message StoreResult {
+    int64 version = 1;
+    bool ring = 2;
+    bool builder = 3;
+    string ErrMsg = 4;
+}
+
+message StatusRequest {
+    bool ring = 1;
+    bool builder = 2;
+}
+
+message StatusMsg {
+    int64 version = 1;
+    string ringstats = 2;
+    string builderstats = 3;
+    string master = 4;
 }

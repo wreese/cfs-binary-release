@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math"
 	"os"
@@ -107,6 +108,7 @@ search meta=<metastring>
 search tier=<string> or search tierX=<string>
 search address=<string> or search addressX=<string>
 search any of the above K/V combos
+watch ring
 rm <nodeid>
 active <nodeid> true|false
 capacity <nodeid> <uint32>
@@ -210,6 +212,8 @@ func (s *SyndClient) mainEntry(args []string) error {
 		}
 	case "search":
 		return s.SearchNodes(args[1:])
+	case "watch":
+		return s.WatchRing()
 	case "rm":
 		if len(args) == 2 {
 			id, err := strconv.ParseUint(args[1], 0, 64)
@@ -576,6 +580,29 @@ func (s *SyndClient) SearchNodes(args []string) (err error) {
 	for i, n := range res.Nodes {
 		fmt.Println("# result", i)
 		printNode(n)
+	}
+
+	return nil
+}
+
+func (s *SyndClient) WatchRing() error {
+	ctx := context.Background()
+	hname, _ := os.Hostname()
+	user, _ := user.Current()
+	sid := pb.SubscriberID{Id: fmt.Sprintf("%s:%s-sc", hname, user.Name)}
+	stream, err := s.client.GetRingStream(ctx, &sid)
+	if err != nil {
+		return err
+	}
+	for {
+		ring, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		fmt.Println(ring.Version)
 	}
 	return nil
 }
