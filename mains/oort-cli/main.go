@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gholt/brimtime"
+	"github.com/gholt/ring"
 	"github.com/gholt/store"
 	"github.com/pandemicsyn/ftls"
 	"github.com/pandemicsyn/oort/api"
@@ -22,19 +23,21 @@ import (
 
 var vaddr = flag.String("vhost", "127.0.0.1:6379", "vstore addr")
 var gaddr = flag.String("ghost", "127.0.0.1:6380", "gstore addr")
+var vring = flag.String("vring", "", "vstore ring (instead of vaddr)")
+var gring = flag.String("gring", "", "gstore ring (instead of gaddr)")
 var groupmode = flag.Bool("g", false, "whether we're talking to a groupstore instance")
 var tls = flag.Bool("tls", true, "whether the server is speaking tls")
 var insecureSkipVerify = flag.Bool("insecure", false, "whether or not we should verify the cert")
 var mutualtls = flag.Bool("mutualtls", false, "whether or not the server expects mutual tls auth")
-var certfile = flag.String("cert", "/etc/oort/client.crt", "cert file to use")
-var keyfile = flag.String("key", "/etc/oort/client.key", "key file to use")
-var cafile = flag.String("ca", "/etc/oort/ca.pem", "ca file to use")
+var certfile = flag.String("cert", "/var/lib/oort-value/client.crt", "cert file to use")
+var keyfile = flag.String("key", "/var/lib/oort-value/client.key", "key file to use")
+var cafile = flag.String("ca", "/var/lib/oort-value/ca.pem", "ca file to use")
 
 var (
 	prompt    = "> "
 	errprompt = "┻━┻ ︵ヽ(`Д´)ﾉ︵ ┻━┻> "
 	historyf  = filepath.Join(os.TempDir(), ".oort-cli-history")
-	cmdnames  = []string{"write", "write-hash", "read", "read-hash", "delete", "lookup", "lookup-group", "mode", "exit", "help"}
+	cmdnames  = []string{"write", "write-hash", "read", "read-hash", "read-group", "delete", "lookup", "lookup-group", "mode", "exit", "help"}
 )
 
 func lineCompleter(line string) (c []string) {
@@ -54,6 +57,7 @@ func (c *Client) printHelp() string {
 	write-hash <groupkey> <subkeyhasha> <subkeyhashb> <value>
 	read <groupkey> <subkey>
 	read-hash <groupkey> <subkeyhasha> <subkeyhashb>
+	read-group <groupkey> <subkey>
 	delete <groupkey> <subkey>
 	lookup <groupkey> <subkey>
 	lookup-group <key>
@@ -238,6 +242,19 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("TIMESTAMPMICRO: %d\nVALUE: %s", timestampMicro, value), nil
+	case "read-group":
+		KeyA, KeyB := murmur3.Sum128([]byte(args))
+		items, err := c.gstore.ReadGroup(context.Background(), KeyA, KeyB)
+		if store.IsNotFound(err) {
+			return fmt.Sprintf("not found"), nil
+		} else if err != nil {
+			return "", err
+		}
+		keys := make([]string, len(items))
+		for k, v := range items {
+			keys[k] = fmt.Sprintf("TIMESTAMPMICRO: %d [ %d | %d] VALUE: %s", v.TimestampMicro, v.ChildKeyA, v.ChildKeyB, v.Value)
+		}
+		return fmt.Sprintf(strings.Join(keys, "\n")), nil
 	case "delete":
 		sarg := strings.SplitN(args, " ", 2)
 		if len(sarg) < 2 {
@@ -310,7 +327,21 @@ func (c *Client) getValueClient() error {
 		}
 		opts = append(opts, opt)
 	}
-	c.vstore, err = api.NewValueStore(c.vaddr, 10, opts...)
+	if c.vring == "" {
+		c.vstore, err = api.NewValueStore(c.vaddr, 10, opts...)
+	} else {
+		var f *os.File
+		f, err = os.Open(c.vring)
+		if err == nil {
+			var r ring.Ring
+			r, err = ring.LoadRing(f)
+			if err == nil {
+				s := api.NewReplValueStore(&api.ReplValueStoreConfig{AddressIndex: 2, GRPCOpts: opts})
+				s.SetRing(r)
+				c.vstore = s
+			}
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("Unable to setup value store: %s", err.Error())
 	}
@@ -333,16 +364,33 @@ func (c *Client) getGroupClient() error {
 		}
 		opts = append(opts, opt)
 	}
-	c.gstore, err = api.NewGroupStore(c.gaddr, 10, opts...)
+	if c.gring == "" {
+		c.gstore, err = api.NewGroupStore(c.gaddr, 10, opts...)
+	} else {
+		var f *os.File
+		f, err = os.Open(c.gring)
+		if err == nil {
+			var r ring.Ring
+			r, err = ring.LoadRing(f)
+			if err == nil {
+				s := api.NewReplGroupStore(&api.ReplGroupStoreConfig{AddressIndex: 2, GRPCOpts: opts})
+				s.SetRing(r)
+				c.gstore = s
+			}
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("Unable to setup group store: %s", err.Error())
 	}
 	return nil
 }
 
+// Client ...
 type Client struct {
 	vaddr  string
 	gaddr  string
+	vring  string
+	gring  string
 	gmode  bool
 	vconn  *grpc.ClientConn
 	vstore store.ValueStore
@@ -364,6 +412,8 @@ func main() {
 	client := Client{
 		vaddr: *vaddr,
 		gaddr: *gaddr,
+		vring: *vring,
+		gring: *gring,
 		gmode: *groupmode,
 	}
 	sm := "value"

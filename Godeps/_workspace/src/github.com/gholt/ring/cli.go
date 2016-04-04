@@ -330,18 +330,18 @@ based on the contents of the file at the [path] given.
 // Normally the results from RingOrBuilder.
 func CLIInfo(r Ring, b *Builder, output io.Writer) error {
 	if r != nil {
-		// TODO:
-		//  Indication of how risky the assignments are:
-		//      Replicas not in distinct tiers, nodes
+		// TODO: Indication of how risky the assignments are: Replicas not in
+		// distinct tiers, nodes.
 		s := r.Stats()
 		report := [][]string{
 			[]string{brimtext.ThousandsSep(int64(s.PartitionCount), ","), "Partitions"},
 			[]string{brimtext.ThousandsSep(int64(s.PartitionBitCount), ","), "Partition Bits"},
 			[]string{brimtext.ThousandsSep(int64(r.ReplicaCount()), ","), "Replicas"},
-			[]string{brimtext.ThousandsSep(int64(s.NodeCount), ","), "Nodes"},
+			[]string{brimtext.ThousandsSep(int64(s.ActiveNodeCount), ","), "Active Nodes"},
 			[]string{brimtext.ThousandsSep(int64(s.InactiveNodeCount), ","), "Inactive Nodes"},
+			[]string{brimtext.ThousandsSepU(s.ActiveCapacity, ","), "Active Capacity"},
+			[]string{brimtext.ThousandsSepU(s.InactiveCapacity, ","), "Inactive Capacity"},
 			[]string{brimtext.ThousandsSep(int64(len(r.Tiers())), ","), "Tier Levels"},
-			[]string{brimtext.ThousandsSepU(s.TotalCapacity, ","), "Total Node Capacity"},
 			[]string{fmt.Sprintf("%.02f%%", s.MaxUnderNodePercentage), fmt.Sprintf("Worst Underweight Node (ID %d)", s.MaxUnderNodeID)},
 			[]string{fmt.Sprintf("%.02f%%", s.MaxOverNodePercentage), fmt.Sprintf("Worst Overweight Node (ID %d)", s.MaxOverNodeID)},
 			[]string{"Version", fmt.Sprintf("%d   %s", r.Version(), time.Unix(0, r.Version()).Format("2006-01-02 15:04:05.000"))},
@@ -351,11 +351,24 @@ func CLIInfo(r Ring, b *Builder, output io.Writer) error {
 		fmt.Fprint(output, brimtext.Align(report, reportOpts))
 	}
 	if b != nil {
-		// TODO:
-		//  Inactive node count
-		//  Total capacity
+		var activeNodes int64
+		var activeCapacity int64
+		var inactiveNodes int64
+		var inactiveCapacity int64
+		for _, n := range b.Nodes() {
+			if n.Active() {
+				activeNodes++
+				activeCapacity += int64(n.Capacity())
+			} else {
+				inactiveNodes++
+				inactiveCapacity += int64(n.Capacity())
+			}
+		}
 		report := [][]string{
-			[]string{brimtext.ThousandsSep(int64(len(b.Nodes())), ","), "Nodes"},
+			[]string{brimtext.ThousandsSep(activeNodes, ","), "Active Nodes"},
+			[]string{brimtext.ThousandsSep(inactiveNodes, ","), "Inactive Nodes"},
+			[]string{brimtext.ThousandsSep(activeCapacity, ","), "Active Capacity"},
+			[]string{brimtext.ThousandsSep(inactiveCapacity, ","), "Inactive Capacity"},
 			[]string{brimtext.ThousandsSep(int64(b.ReplicaCount()), ","), "Replicas"},
 			[]string{brimtext.ThousandsSep(int64(len(b.Tiers())), ","), "Tier Levels"},
 			[]string{brimtext.ThousandsSep(int64(b.PointsAllowed()), ","), "Points Allowed"},
@@ -672,9 +685,6 @@ func CLIAddOrSet(b *Builder, args []string, n BuilderNode, output io.Writer) err
 		}
 		if sarg[0] == "" {
 			return fmt.Errorf(`invalid expression %#v; nothing was left of "="`, arg)
-		}
-		if sarg[1] == "" {
-			return fmt.Errorf(`invalid expression %#v; nothing was right of "="`, arg)
 		}
 		switch sarg[0] {
 		case "active":

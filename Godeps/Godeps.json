@@ -15,8 +15,8 @@
 		},
 		{
 			"ImportPath": "github.com/BurntSushi/toml",
-			"Comment": "v0.1.0-27-gf772cd8",
-			"Rev": "f772cd89eb0b33743387f826d1918df67f99cc7a"
+			"Comment": "v0.1.0-46-gbbd5bb6",
+			"Rev": "bbd5bb678321a0d6e58f1099321dfa73391c1b6f"
 		},
 		{
 			"ImportPath": "github.com/Microsoft/go-winio",
@@ -24,8 +24,8 @@
 		},
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
-			"Comment": "v0.9.0-15-g219c8cb",
-			"Rev": "219c8cb75c258c552e999735be6df753ffc7afdc"
+			"Comment": "v0.10.0",
+			"Rev": "4b6ea7319e214d98c938f12692336f7ca9348d6b"
 		},
 		{
 			"ImportPath": "github.com/StackExchange/wmi",
@@ -43,11 +43,11 @@
 		},
 		{
 			"ImportPath": "github.com/creiht/formic/flother",
-			"Rev": "b8bb3215f9eb6d3f1a642101c1a9b3886d9b08ba"
+			"Rev": "d220956b934c59b8a731d51e77b5c0ed5289a5e0"
 		},
 		{
 			"ImportPath": "github.com/creiht/formic/proto",
-			"Rev": "b8bb3215f9eb6d3f1a642101c1a9b3886d9b08ba"
+			"Rev": "d220956b934c59b8a731d51e77b5c0ed5289a5e0"
 		},
 		{
 			"ImportPath": "github.com/docker/go-connections/sockets",
@@ -84,7 +84,7 @@
 		},
 		{
 			"ImportPath": "github.com/gholt/ring",
-			"Rev": "6b1bb9b756b950461aa21d6079f0891f16ed9614"
+			"Rev": "0e0598c289e9950e9bdd51ef9c911a85b2e1b2d4"
 		},
 		{
 			"ImportPath": "github.com/gholt/store",
@@ -117,7 +117,7 @@
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
-			"Rev": "b9504f23731d0b61ccfff7370a161d6c857ca00d"
+			"Rev": "8d92cf5fc15a4382f8964b08e1f42a75c0591aa3"
 		},
 		{
 			"ImportPath": "github.com/opencontainers/runc/libcontainer/user",
@@ -138,48 +138,48 @@
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api",
-			"Comment": "qa-0.0.1-94-g419416f",
-			"Rev": "419416fe95d9e9eb4d3be42a6afec0a96402056b"
+			"Comment": "qa-0.0.1-124-g4484036",
+			"Rev": "4484036645d95b3d4589d027d9ba2ee610e06af0"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api/groupproto",
-			"Comment": "qa-0.0.1-94-g419416f",
-			"Rev": "419416fe95d9e9eb4d3be42a6afec0a96402056b"
+			"Comment": "qa-0.0.1-124-g4484036",
+			"Rev": "4484036645d95b3d4589d027d9ba2ee610e06af0"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api/proto",
-			"Comment": "qa-0.0.1-94-g419416f",
-			"Rev": "419416fe95d9e9eb4d3be42a6afec0a96402056b"
+			"Comment": "qa-0.0.1-124-g4484036",
+			"Rev": "4484036645d95b3d4589d027d9ba2ee610e06af0"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api/valueproto",
-			"Comment": "qa-0.0.1-94-g419416f",
-			"Rev": "419416fe95d9e9eb4d3be42a6afec0a96402056b"
+			"Comment": "qa-0.0.1-124-g4484036",
+			"Rev": "4484036645d95b3d4589d027d9ba2ee610e06af0"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/oort",
-			"Comment": "qa-0.0.1-94-g419416f",
-			"Rev": "419416fe95d9e9eb4d3be42a6afec0a96402056b"
+			"Comment": "qa-0.0.1-124-g4484036",
+			"Rev": "4484036645d95b3d4589d027d9ba2ee610e06af0"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/oortstore",
-			"Comment": "qa-0.0.1-94-g419416f",
-			"Rev": "419416fe95d9e9eb4d3be42a6afec0a96402056b"
+			"Comment": "qa-0.0.1-124-g4484036",
+			"Rev": "4484036645d95b3d4589d027d9ba2ee610e06af0"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/syndicate/api/proto",
-			"Comment": "stable-0.0.3-28-gbbeccb7",
-			"Rev": "bbeccb70519bbe789a26aa78d8fbbd6c0747754a"
+			"Comment": "stable-0.0.3-54-gd1dce69",
+			"Rev": "d1dce6999be1f43449fe413fb66eaf1eed38e5e8"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/syndicate/syndicate",
-			"Comment": "stable-0.0.3-28-gbbeccb7",
-			"Rev": "bbeccb70519bbe789a26aa78d8fbbd6c0747754a"
+			"Comment": "stable-0.0.3-54-gd1dce69",
+			"Rev": "d1dce6999be1f43449fe413fb66eaf1eed38e5e8"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/syndicate/utils/srvconf",
-			"Comment": "stable-0.0.3-28-gbbeccb7",
-			"Rev": "bbeccb70519bbe789a26aa78d8fbbd6c0747754a"
+			"Comment": "stable-0.0.3-54-gd1dce69",
+			"Rev": "d1dce6999be1f43449fe413fb66eaf1eed38e5e8"
 		},
 		{
 			"ImportPath": "github.com/peterh/liner",
@@ -196,8 +196,8 @@
 		},
 		{
 			"ImportPath": "github.com/russross/blackfriday",
-			"Comment": "v1.4-21-g006144a",
-			"Rev": "006144af03eeeff1037240a71865a9fd61f1c25f"
+			"Comment": "v1.4-23-gb43df97",
+			"Rev": "b43df972fb5fdf3af8d2e90f38a69d374fe26dd0"
 		},
 		{
 			"ImportPath": "github.com/shirou/gopsutil/disk",
@@ -224,7 +224,7 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ssh/terminal",
-			"Rev": "5dc8cb4b8a8eb076cbb5a06bc3b8682c15bdbbd3"
+			"Rev": "c197bcf24cde29d3f73c7b4ac6fd41f4384e8af6"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
@@ -256,39 +256,39 @@
 		},
 		{
 			"ImportPath": "google.golang.org/grpc",
-			"Rev": "986912c9070a060e59e0f28ac7c87f89f72b9388"
+			"Rev": "d3ddb4469d5a1b949fc7a7da7c1d6a0d1b6de994"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/codes",
-			"Rev": "986912c9070a060e59e0f28ac7c87f89f72b9388"
+			"Rev": "d3ddb4469d5a1b949fc7a7da7c1d6a0d1b6de994"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/credentials",
-			"Rev": "986912c9070a060e59e0f28ac7c87f89f72b9388"
+			"Rev": "d3ddb4469d5a1b949fc7a7da7c1d6a0d1b6de994"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/grpclog",
-			"Rev": "986912c9070a060e59e0f28ac7c87f89f72b9388"
+			"Rev": "d3ddb4469d5a1b949fc7a7da7c1d6a0d1b6de994"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/internal",
-			"Rev": "986912c9070a060e59e0f28ac7c87f89f72b9388"
+			"Rev": "d3ddb4469d5a1b949fc7a7da7c1d6a0d1b6de994"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/metadata",
-			"Rev": "986912c9070a060e59e0f28ac7c87f89f72b9388"
+			"Rev": "d3ddb4469d5a1b949fc7a7da7c1d6a0d1b6de994"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/naming",
-			"Rev": "986912c9070a060e59e0f28ac7c87f89f72b9388"
+			"Rev": "d3ddb4469d5a1b949fc7a7da7c1d6a0d1b6de994"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/peer",
-			"Rev": "986912c9070a060e59e0f28ac7c87f89f72b9388"
+			"Rev": "d3ddb4469d5a1b949fc7a7da7c1d6a0d1b6de994"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc/transport",
-			"Rev": "986912c9070a060e59e0f28ac7c87f89f72b9388"
+			"Rev": "d3ddb4469d5a1b949fc7a7da7c1d6a0d1b6de994"
 		}
 	]
 }

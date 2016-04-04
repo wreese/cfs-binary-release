@@ -9,22 +9,23 @@
 		syndicate_api.proto
 
 	It has these top-level messages:
-		RingMsg
-		StoreResult
-		StatusRequest
-		StatusMsg
 		EmptyMsg
 		RingStatus
 		Node
 		ModifyMsg
 		RingConf
 		Conf
+		SubscriberID
 		RegisterRequest
 		HardwareProfile
 		Disk
 		NodeConfig
 		Ring
 		SearchResult
+		RingMsg
+		StoreResult
+		StatusRequest
+		StatusMsg
 */
 package proto
 
@@ -43,49 +44,6 @@ import io "io"
 var _ = proto1.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
-
-type RingMsg struct {
-	Version  int64  `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
-	Ring     []byte `protobuf:"bytes,2,opt,name=ring,proto3" json:"ring,omitempty"`
-	Builder  []byte `protobuf:"bytes,3,opt,name=builder,proto3" json:"builder,omitempty"`
-	Deadline int64  `protobuf:"varint,4,opt,name=deadline,proto3" json:"deadline,omitempty"`
-	Rollback int64  `protobuf:"varint,5,opt,name=rollback,proto3" json:"rollback,omitempty"`
-}
-
-func (m *RingMsg) Reset()         { *m = RingMsg{} }
-func (m *RingMsg) String() string { return proto1.CompactTextString(m) }
-func (*RingMsg) ProtoMessage()    {}
-
-type StoreResult struct {
-	Version int64  `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
-	Ring    bool   `protobuf:"varint,2,opt,name=ring,proto3" json:"ring,omitempty"`
-	Builder bool   `protobuf:"varint,3,opt,name=builder,proto3" json:"builder,omitempty"`
-	ErrMsg  string `protobuf:"bytes,4,opt,name=ErrMsg,proto3" json:"ErrMsg,omitempty"`
-}
-
-func (m *StoreResult) Reset()         { *m = StoreResult{} }
-func (m *StoreResult) String() string { return proto1.CompactTextString(m) }
-func (*StoreResult) ProtoMessage()    {}
-
-type StatusRequest struct {
-	Ring    bool `protobuf:"varint,1,opt,name=ring,proto3" json:"ring,omitempty"`
-	Builder bool `protobuf:"varint,2,opt,name=builder,proto3" json:"builder,omitempty"`
-}
-
-func (m *StatusRequest) Reset()         { *m = StatusRequest{} }
-func (m *StatusRequest) String() string { return proto1.CompactTextString(m) }
-func (*StatusRequest) ProtoMessage()    {}
-
-type StatusMsg struct {
-	Version      int64  `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
-	Ringstats    string `protobuf:"bytes,2,opt,name=ringstats,proto3" json:"ringstats,omitempty"`
-	Builderstats string `protobuf:"bytes,3,opt,name=builderstats,proto3" json:"builderstats,omitempty"`
-	Master       string `protobuf:"bytes,4,opt,name=master,proto3" json:"master,omitempty"`
-}
-
-func (m *StatusMsg) Reset()         { *m = StatusMsg{} }
-func (m *StatusMsg) String() string { return proto1.CompactTextString(m) }
-func (*StatusMsg) ProtoMessage()    {}
 
 type EmptyMsg struct {
 }
@@ -158,6 +116,14 @@ type Conf struct {
 func (m *Conf) Reset()         { *m = Conf{} }
 func (m *Conf) String() string { return proto1.CompactTextString(m) }
 func (*Conf) ProtoMessage()    {}
+
+type SubscriberID struct {
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+}
+
+func (m *SubscriberID) Reset()         { *m = SubscriberID{} }
+func (m *SubscriberID) String() string { return proto1.CompactTextString(m) }
+func (*SubscriberID) ProtoMessage()    {}
 
 type RegisterRequest struct {
 	Hostname string           `protobuf:"bytes,1,opt,name=hostname,proto3" json:"hostname,omitempty"`
@@ -239,166 +205,72 @@ func (m *SearchResult) GetNodes() []*Node {
 	return nil
 }
 
+type RingMsg struct {
+	Version  int64  `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
+	Ring     []byte `protobuf:"bytes,2,opt,name=ring,proto3" json:"ring,omitempty"`
+	Builder  []byte `protobuf:"bytes,3,opt,name=builder,proto3" json:"builder,omitempty"`
+	Deadline int64  `protobuf:"varint,4,opt,name=deadline,proto3" json:"deadline,omitempty"`
+	Rollback int64  `protobuf:"varint,5,opt,name=rollback,proto3" json:"rollback,omitempty"`
+}
+
+func (m *RingMsg) Reset()         { *m = RingMsg{} }
+func (m *RingMsg) String() string { return proto1.CompactTextString(m) }
+func (*RingMsg) ProtoMessage()    {}
+
+type StoreResult struct {
+	Version int64  `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
+	Ring    bool   `protobuf:"varint,2,opt,name=ring,proto3" json:"ring,omitempty"`
+	Builder bool   `protobuf:"varint,3,opt,name=builder,proto3" json:"builder,omitempty"`
+	ErrMsg  string `protobuf:"bytes,4,opt,name=ErrMsg,proto3" json:"ErrMsg,omitempty"`
+}
+
+func (m *StoreResult) Reset()         { *m = StoreResult{} }
+func (m *StoreResult) String() string { return proto1.CompactTextString(m) }
+func (*StoreResult) ProtoMessage()    {}
+
+type StatusRequest struct {
+	Ring    bool `protobuf:"varint,1,opt,name=ring,proto3" json:"ring,omitempty"`
+	Builder bool `protobuf:"varint,2,opt,name=builder,proto3" json:"builder,omitempty"`
+}
+
+func (m *StatusRequest) Reset()         { *m = StatusRequest{} }
+func (m *StatusRequest) String() string { return proto1.CompactTextString(m) }
+func (*StatusRequest) ProtoMessage()    {}
+
+type StatusMsg struct {
+	Version      int64  `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
+	Ringstats    string `protobuf:"bytes,2,opt,name=ringstats,proto3" json:"ringstats,omitempty"`
+	Builderstats string `protobuf:"bytes,3,opt,name=builderstats,proto3" json:"builderstats,omitempty"`
+	Master       string `protobuf:"bytes,4,opt,name=master,proto3" json:"master,omitempty"`
+}
+
+func (m *StatusMsg) Reset()         { *m = StatusMsg{} }
+func (m *StatusMsg) String() string { return proto1.CompactTextString(m) }
+func (*StatusMsg) ProtoMessage()    {}
+
 func init() {
-	proto1.RegisterType((*RingMsg)(nil), "proto.RingMsg")
-	proto1.RegisterType((*StoreResult)(nil), "proto.StoreResult")
-	proto1.RegisterType((*StatusRequest)(nil), "proto.StatusRequest")
-	proto1.RegisterType((*StatusMsg)(nil), "proto.StatusMsg")
 	proto1.RegisterType((*EmptyMsg)(nil), "proto.EmptyMsg")
 	proto1.RegisterType((*RingStatus)(nil), "proto.RingStatus")
 	proto1.RegisterType((*Node)(nil), "proto.Node")
 	proto1.RegisterType((*ModifyMsg)(nil), "proto.ModifyMsg")
 	proto1.RegisterType((*RingConf)(nil), "proto.RingConf")
 	proto1.RegisterType((*Conf)(nil), "proto.Conf")
+	proto1.RegisterType((*SubscriberID)(nil), "proto.SubscriberID")
 	proto1.RegisterType((*RegisterRequest)(nil), "proto.RegisterRequest")
 	proto1.RegisterType((*HardwareProfile)(nil), "proto.HardwareProfile")
 	proto1.RegisterType((*Disk)(nil), "proto.Disk")
 	proto1.RegisterType((*NodeConfig)(nil), "proto.NodeConfig")
 	proto1.RegisterType((*Ring)(nil), "proto.Ring")
 	proto1.RegisterType((*SearchResult)(nil), "proto.SearchResult")
+	proto1.RegisterType((*RingMsg)(nil), "proto.RingMsg")
+	proto1.RegisterType((*StoreResult)(nil), "proto.StoreResult")
+	proto1.RegisterType((*StatusRequest)(nil), "proto.StatusRequest")
+	proto1.RegisterType((*StatusMsg)(nil), "proto.StatusMsg")
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ context.Context
 var _ grpc.ClientConn
-
-// Client API for RingDist service
-
-type RingDistClient interface {
-	Store(ctx context.Context, in *RingMsg, opts ...grpc.CallOption) (*StoreResult, error)
-	Revert(ctx context.Context, in *RingMsg, opts ...grpc.CallOption) (*StoreResult, error)
-	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusMsg, error)
-	Setup(ctx context.Context, in *RingMsg, opts ...grpc.CallOption) (*StoreResult, error)
-}
-
-type ringDistClient struct {
-	cc *grpc.ClientConn
-}
-
-func NewRingDistClient(cc *grpc.ClientConn) RingDistClient {
-	return &ringDistClient{cc}
-}
-
-func (c *ringDistClient) Store(ctx context.Context, in *RingMsg, opts ...grpc.CallOption) (*StoreResult, error) {
-	out := new(StoreResult)
-	err := grpc.Invoke(ctx, "/proto.RingDist/Store", in, out, c.cc, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *ringDistClient) Revert(ctx context.Context, in *RingMsg, opts ...grpc.CallOption) (*StoreResult, error) {
-	out := new(StoreResult)
-	err := grpc.Invoke(ctx, "/proto.RingDist/Revert", in, out, c.cc, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *ringDistClient) Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusMsg, error) {
-	out := new(StatusMsg)
-	err := grpc.Invoke(ctx, "/proto.RingDist/Status", in, out, c.cc, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *ringDistClient) Setup(ctx context.Context, in *RingMsg, opts ...grpc.CallOption) (*StoreResult, error) {
-	out := new(StoreResult)
-	err := grpc.Invoke(ctx, "/proto.RingDist/Setup", in, out, c.cc, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// Server API for RingDist service
-
-type RingDistServer interface {
-	Store(context.Context, *RingMsg) (*StoreResult, error)
-	Revert(context.Context, *RingMsg) (*StoreResult, error)
-	Status(context.Context, *StatusRequest) (*StatusMsg, error)
-	Setup(context.Context, *RingMsg) (*StoreResult, error)
-}
-
-func RegisterRingDistServer(s *grpc.Server, srv RingDistServer) {
-	s.RegisterService(&_RingDist_serviceDesc, srv)
-}
-
-func _RingDist_Store_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
-	in := new(RingMsg)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	out, err := srv.(RingDistServer).Store(ctx, in)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func _RingDist_Revert_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
-	in := new(RingMsg)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	out, err := srv.(RingDistServer).Revert(ctx, in)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func _RingDist_Status_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
-	in := new(StatusRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	out, err := srv.(RingDistServer).Status(ctx, in)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func _RingDist_Setup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
-	in := new(RingMsg)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	out, err := srv.(RingDistServer).Setup(ctx, in)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-var _RingDist_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "proto.RingDist",
-	HandlerType: (*RingDistServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "Store",
-			Handler:    _RingDist_Store_Handler,
-		},
-		{
-			MethodName: "Revert",
-			Handler:    _RingDist_Revert_Handler,
-		},
-		{
-			MethodName: "Status",
-			Handler:    _RingDist_Status_Handler,
-		},
-		{
-			MethodName: "Setup",
-			Handler:    _RingDist_Setup_Handler,
-		},
-	},
-	Streams: []grpc.StreamDesc{},
-}
 
 // Client API for Syndicate service
 
@@ -416,6 +288,7 @@ type SyndicateClient interface {
 	GetNodeConfig(ctx context.Context, in *Node, opts ...grpc.CallOption) (*RingConf, error)
 	SearchNodes(ctx context.Context, in *Node, opts ...grpc.CallOption) (*SearchResult, error)
 	GetRing(ctx context.Context, in *EmptyMsg, opts ...grpc.CallOption) (*Ring, error)
+	GetRingStream(ctx context.Context, in *SubscriberID, opts ...grpc.CallOption) (Syndicate_GetRingStreamClient, error)
 	RegisterNode(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*NodeConfig, error)
 }
 
@@ -544,6 +417,38 @@ func (c *syndicateClient) GetRing(ctx context.Context, in *EmptyMsg, opts ...grp
 	return out, nil
 }
 
+func (c *syndicateClient) GetRingStream(ctx context.Context, in *SubscriberID, opts ...grpc.CallOption) (Syndicate_GetRingStreamClient, error) {
+	stream, err := grpc.NewClientStream(ctx, &_Syndicate_serviceDesc.Streams[0], c.cc, "/proto.Syndicate/GetRingStream", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &syndicateGetRingStreamClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Syndicate_GetRingStreamClient interface {
+	Recv() (*Ring, error)
+	grpc.ClientStream
+}
+
+type syndicateGetRingStreamClient struct {
+	grpc.ClientStream
+}
+
+func (x *syndicateGetRingStreamClient) Recv() (*Ring, error) {
+	m := new(Ring)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *syndicateClient) RegisterNode(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*NodeConfig, error) {
 	out := new(NodeConfig)
 	err := grpc.Invoke(ctx, "/proto.Syndicate/RegisterNode", in, out, c.cc, opts...)
@@ -569,6 +474,7 @@ type SyndicateServer interface {
 	GetNodeConfig(context.Context, *Node) (*RingConf, error)
 	SearchNodes(context.Context, *Node) (*SearchResult, error)
 	GetRing(context.Context, *EmptyMsg) (*Ring, error)
+	GetRingStream(*SubscriberID, Syndicate_GetRingStreamServer) error
 	RegisterNode(context.Context, *RegisterRequest) (*NodeConfig, error)
 }
 
@@ -732,6 +638,27 @@ func _Syndicate_GetRing_Handler(srv interface{}, ctx context.Context, dec func(i
 	return out, nil
 }
 
+func _Syndicate_GetRingStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SubscriberID)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(SyndicateServer).GetRingStream(m, &syndicateGetRingStreamServer{stream})
+}
+
+type Syndicate_GetRingStreamServer interface {
+	Send(*Ring) error
+	grpc.ServerStream
+}
+
+type syndicateGetRingStreamServer struct {
+	grpc.ServerStream
+}
+
+func (x *syndicateGetRingStreamServer) Send(m *Ring) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 func _Syndicate_RegisterNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
 	in := new(RegisterRequest)
 	if err := dec(in); err != nil {
@@ -805,184 +732,151 @@ var _Syndicate_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Syndicate_RegisterNode_Handler,
 		},
 	},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "GetRingStream",
+			Handler:       _Syndicate_GetRingStream_Handler,
+			ServerStreams: true,
+		},
+	},
+}
+
+// Client API for RingDist service
+
+type RingDistClient interface {
+	Store(ctx context.Context, in *RingMsg, opts ...grpc.CallOption) (*StoreResult, error)
+	Revert(ctx context.Context, in *RingMsg, opts ...grpc.CallOption) (*StoreResult, error)
+	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusMsg, error)
+	Setup(ctx context.Context, in *RingMsg, opts ...grpc.CallOption) (*StoreResult, error)
+}
+
+type ringDistClient struct {
+	cc *grpc.ClientConn
+}
+
+func NewRingDistClient(cc *grpc.ClientConn) RingDistClient {
+	return &ringDistClient{cc}
+}
+
+func (c *ringDistClient) Store(ctx context.Context, in *RingMsg, opts ...grpc.CallOption) (*StoreResult, error) {
+	out := new(StoreResult)
+	err := grpc.Invoke(ctx, "/proto.RingDist/Store", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ringDistClient) Revert(ctx context.Context, in *RingMsg, opts ...grpc.CallOption) (*StoreResult, error) {
+	out := new(StoreResult)
+	err := grpc.Invoke(ctx, "/proto.RingDist/Revert", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ringDistClient) Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusMsg, error) {
+	out := new(StatusMsg)
+	err := grpc.Invoke(ctx, "/proto.RingDist/Status", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ringDistClient) Setup(ctx context.Context, in *RingMsg, opts ...grpc.CallOption) (*StoreResult, error) {
+	out := new(StoreResult)
+	err := grpc.Invoke(ctx, "/proto.RingDist/Setup", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Server API for RingDist service
+
+type RingDistServer interface {
+	Store(context.Context, *RingMsg) (*StoreResult, error)
+	Revert(context.Context, *RingMsg) (*StoreResult, error)
+	Status(context.Context, *StatusRequest) (*StatusMsg, error)
+	Setup(context.Context, *RingMsg) (*StoreResult, error)
+}
+
+func RegisterRingDistServer(s *grpc.Server, srv RingDistServer) {
+	s.RegisterService(&_RingDist_serviceDesc, srv)
+}
+
+func _RingDist_Store_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+	in := new(RingMsg)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	out, err := srv.(RingDistServer).Store(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func _RingDist_Revert_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+	in := new(RingMsg)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	out, err := srv.(RingDistServer).Revert(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func _RingDist_Status_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+	in := new(StatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	out, err := srv.(RingDistServer).Status(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func _RingDist_Setup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+	in := new(RingMsg)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	out, err := srv.(RingDistServer).Setup(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+var _RingDist_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "proto.RingDist",
+	HandlerType: (*RingDistServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Store",
+			Handler:    _RingDist_Store_Handler,
+		},
+		{
+			MethodName: "Revert",
+			Handler:    _RingDist_Revert_Handler,
+		},
+		{
+			MethodName: "Status",
+			Handler:    _RingDist_Status_Handler,
+		},
+		{
+			MethodName: "Setup",
+			Handler:    _RingDist_Setup_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{},
-}
-
-func (m *RingMsg) Marshal() (data []byte, err error) {
-	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
-	if err != nil {
-		return nil, err
-	}
-	return data[:n], nil
-}
-
-func (m *RingMsg) MarshalTo(data []byte) (int, error) {
-	var i int
-	_ = i
-	var l int
-	_ = l
-	if m.Version != 0 {
-		data[i] = 0x8
-		i++
-		i = encodeVarintSyndicateApi(data, i, uint64(m.Version))
-	}
-	if m.Ring != nil {
-		if len(m.Ring) > 0 {
-			data[i] = 0x12
-			i++
-			i = encodeVarintSyndicateApi(data, i, uint64(len(m.Ring)))
-			i += copy(data[i:], m.Ring)
-		}
-	}
-	if m.Builder != nil {
-		if len(m.Builder) > 0 {
-			data[i] = 0x1a
-			i++
-			i = encodeVarintSyndicateApi(data, i, uint64(len(m.Builder)))
-			i += copy(data[i:], m.Builder)
-		}
-	}
-	if m.Deadline != 0 {
-		data[i] = 0x20
-		i++
-		i = encodeVarintSyndicateApi(data, i, uint64(m.Deadline))
-	}
-	if m.Rollback != 0 {
-		data[i] = 0x28
-		i++
-		i = encodeVarintSyndicateApi(data, i, uint64(m.Rollback))
-	}
-	return i, nil
-}
-
-func (m *StoreResult) Marshal() (data []byte, err error) {
-	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
-	if err != nil {
-		return nil, err
-	}
-	return data[:n], nil
-}
-
-func (m *StoreResult) MarshalTo(data []byte) (int, error) {
-	var i int
-	_ = i
-	var l int
-	_ = l
-	if m.Version != 0 {
-		data[i] = 0x8
-		i++
-		i = encodeVarintSyndicateApi(data, i, uint64(m.Version))
-	}
-	if m.Ring {
-		data[i] = 0x10
-		i++
-		if m.Ring {
-			data[i] = 1
-		} else {
-			data[i] = 0
-		}
-		i++
-	}
-	if m.Builder {
-		data[i] = 0x18
-		i++
-		if m.Builder {
-			data[i] = 1
-		} else {
-			data[i] = 0
-		}
-		i++
-	}
-	if len(m.ErrMsg) > 0 {
-		data[i] = 0x22
-		i++
-		i = encodeVarintSyndicateApi(data, i, uint64(len(m.ErrMsg)))
-		i += copy(data[i:], m.ErrMsg)
-	}
-	return i, nil
-}
-
-func (m *StatusRequest) Marshal() (data []byte, err error) {
-	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
-	if err != nil {
-		return nil, err
-	}
-	return data[:n], nil
-}
-
-func (m *StatusRequest) MarshalTo(data []byte) (int, error) {
-	var i int
-	_ = i
-	var l int
-	_ = l
-	if m.Ring {
-		data[i] = 0x8
-		i++
-		if m.Ring {
-			data[i] = 1
-		} else {
-			data[i] = 0
-		}
-		i++
-	}
-	if m.Builder {
-		data[i] = 0x10
-		i++
-		if m.Builder {
-			data[i] = 1
-		} else {
-			data[i] = 0
-		}
-		i++
-	}
-	return i, nil
-}
-
-func (m *StatusMsg) Marshal() (data []byte, err error) {
-	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
-	if err != nil {
-		return nil, err
-	}
-	return data[:n], nil
-}
-
-func (m *StatusMsg) MarshalTo(data []byte) (int, error) {
-	var i int
-	_ = i
-	var l int
-	_ = l
-	if m.Version != 0 {
-		data[i] = 0x8
-		i++
-		i = encodeVarintSyndicateApi(data, i, uint64(m.Version))
-	}
-	if len(m.Ringstats) > 0 {
-		data[i] = 0x12
-		i++
-		i = encodeVarintSyndicateApi(data, i, uint64(len(m.Ringstats)))
-		i += copy(data[i:], m.Ringstats)
-	}
-	if len(m.Builderstats) > 0 {
-		data[i] = 0x1a
-		i++
-		i = encodeVarintSyndicateApi(data, i, uint64(len(m.Builderstats)))
-		i += copy(data[i:], m.Builderstats)
-	}
-	if len(m.Master) > 0 {
-		data[i] = 0x22
-		i++
-		i = encodeVarintSyndicateApi(data, i, uint64(len(m.Master)))
-		i += copy(data[i:], m.Master)
-	}
-	return i, nil
 }
 
 func (m *EmptyMsg) Marshal() (data []byte, err error) {
@@ -1223,6 +1117,30 @@ func (m *Conf) MarshalTo(data []byte) (int, error) {
 			data[i] = 0
 		}
 		i++
+	}
+	return i, nil
+}
+
+func (m *SubscriberID) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *SubscriberID) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.Id) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintSyndicateApi(data, i, uint64(len(m.Id)))
+		i += copy(data[i:], m.Id)
 	}
 	return i, nil
 }
@@ -1468,6 +1386,183 @@ func (m *SearchResult) MarshalTo(data []byte) (int, error) {
 	return i, nil
 }
 
+func (m *RingMsg) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *RingMsg) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Version != 0 {
+		data[i] = 0x8
+		i++
+		i = encodeVarintSyndicateApi(data, i, uint64(m.Version))
+	}
+	if m.Ring != nil {
+		if len(m.Ring) > 0 {
+			data[i] = 0x12
+			i++
+			i = encodeVarintSyndicateApi(data, i, uint64(len(m.Ring)))
+			i += copy(data[i:], m.Ring)
+		}
+	}
+	if m.Builder != nil {
+		if len(m.Builder) > 0 {
+			data[i] = 0x1a
+			i++
+			i = encodeVarintSyndicateApi(data, i, uint64(len(m.Builder)))
+			i += copy(data[i:], m.Builder)
+		}
+	}
+	if m.Deadline != 0 {
+		data[i] = 0x20
+		i++
+		i = encodeVarintSyndicateApi(data, i, uint64(m.Deadline))
+	}
+	if m.Rollback != 0 {
+		data[i] = 0x28
+		i++
+		i = encodeVarintSyndicateApi(data, i, uint64(m.Rollback))
+	}
+	return i, nil
+}
+
+func (m *StoreResult) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *StoreResult) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Version != 0 {
+		data[i] = 0x8
+		i++
+		i = encodeVarintSyndicateApi(data, i, uint64(m.Version))
+	}
+	if m.Ring {
+		data[i] = 0x10
+		i++
+		if m.Ring {
+			data[i] = 1
+		} else {
+			data[i] = 0
+		}
+		i++
+	}
+	if m.Builder {
+		data[i] = 0x18
+		i++
+		if m.Builder {
+			data[i] = 1
+		} else {
+			data[i] = 0
+		}
+		i++
+	}
+	if len(m.ErrMsg) > 0 {
+		data[i] = 0x22
+		i++
+		i = encodeVarintSyndicateApi(data, i, uint64(len(m.ErrMsg)))
+		i += copy(data[i:], m.ErrMsg)
+	}
+	return i, nil
+}
+
+func (m *StatusRequest) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *StatusRequest) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Ring {
+		data[i] = 0x8
+		i++
+		if m.Ring {
+			data[i] = 1
+		} else {
+			data[i] = 0
+		}
+		i++
+	}
+	if m.Builder {
+		data[i] = 0x10
+		i++
+		if m.Builder {
+			data[i] = 1
+		} else {
+			data[i] = 0
+		}
+		i++
+	}
+	return i, nil
+}
+
+func (m *StatusMsg) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *StatusMsg) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Version != 0 {
+		data[i] = 0x8
+		i++
+		i = encodeVarintSyndicateApi(data, i, uint64(m.Version))
+	}
+	if len(m.Ringstats) > 0 {
+		data[i] = 0x12
+		i++
+		i = encodeVarintSyndicateApi(data, i, uint64(len(m.Ringstats)))
+		i += copy(data[i:], m.Ringstats)
+	}
+	if len(m.Builderstats) > 0 {
+		data[i] = 0x1a
+		i++
+		i = encodeVarintSyndicateApi(data, i, uint64(len(m.Builderstats)))
+		i += copy(data[i:], m.Builderstats)
+	}
+	if len(m.Master) > 0 {
+		data[i] = 0x22
+		i++
+		i = encodeVarintSyndicateApi(data, i, uint64(len(m.Master)))
+		i += copy(data[i:], m.Master)
+	}
+	return i, nil
+}
+
 func encodeFixed64SyndicateApi(data []byte, offset int, v uint64) int {
 	data[offset] = uint8(v)
 	data[offset+1] = uint8(v >> 8)
@@ -1495,85 +1590,6 @@ func encodeVarintSyndicateApi(data []byte, offset int, v uint64) int {
 	data[offset] = uint8(v)
 	return offset + 1
 }
-func (m *RingMsg) Size() (n int) {
-	var l int
-	_ = l
-	if m.Version != 0 {
-		n += 1 + sovSyndicateApi(uint64(m.Version))
-	}
-	if m.Ring != nil {
-		l = len(m.Ring)
-		if l > 0 {
-			n += 1 + l + sovSyndicateApi(uint64(l))
-		}
-	}
-	if m.Builder != nil {
-		l = len(m.Builder)
-		if l > 0 {
-			n += 1 + l + sovSyndicateApi(uint64(l))
-		}
-	}
-	if m.Deadline != 0 {
-		n += 1 + sovSyndicateApi(uint64(m.Deadline))
-	}
-	if m.Rollback != 0 {
-		n += 1 + sovSyndicateApi(uint64(m.Rollback))
-	}
-	return n
-}
-
-func (m *StoreResult) Size() (n int) {
-	var l int
-	_ = l
-	if m.Version != 0 {
-		n += 1 + sovSyndicateApi(uint64(m.Version))
-	}
-	if m.Ring {
-		n += 2
-	}
-	if m.Builder {
-		n += 2
-	}
-	l = len(m.ErrMsg)
-	if l > 0 {
-		n += 1 + l + sovSyndicateApi(uint64(l))
-	}
-	return n
-}
-
-func (m *StatusRequest) Size() (n int) {
-	var l int
-	_ = l
-	if m.Ring {
-		n += 2
-	}
-	if m.Builder {
-		n += 2
-	}
-	return n
-}
-
-func (m *StatusMsg) Size() (n int) {
-	var l int
-	_ = l
-	if m.Version != 0 {
-		n += 1 + sovSyndicateApi(uint64(m.Version))
-	}
-	l = len(m.Ringstats)
-	if l > 0 {
-		n += 1 + l + sovSyndicateApi(uint64(l))
-	}
-	l = len(m.Builderstats)
-	if l > 0 {
-		n += 1 + l + sovSyndicateApi(uint64(l))
-	}
-	l = len(m.Master)
-	if l > 0 {
-		n += 1 + l + sovSyndicateApi(uint64(l))
-	}
-	return n
-}
-
 func (m *EmptyMsg) Size() (n int) {
 	var l int
 	_ = l
@@ -1671,6 +1687,16 @@ func (m *Conf) Size() (n int) {
 	}
 	if m.RestartRequired {
 		n += 2
+	}
+	return n
+}
+
+func (m *SubscriberID) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Id)
+	if l > 0 {
+		n += 1 + l + sovSyndicateApi(uint64(l))
 	}
 	return n
 }
@@ -1784,6 +1810,85 @@ func (m *SearchResult) Size() (n int) {
 	return n
 }
 
+func (m *RingMsg) Size() (n int) {
+	var l int
+	_ = l
+	if m.Version != 0 {
+		n += 1 + sovSyndicateApi(uint64(m.Version))
+	}
+	if m.Ring != nil {
+		l = len(m.Ring)
+		if l > 0 {
+			n += 1 + l + sovSyndicateApi(uint64(l))
+		}
+	}
+	if m.Builder != nil {
+		l = len(m.Builder)
+		if l > 0 {
+			n += 1 + l + sovSyndicateApi(uint64(l))
+		}
+	}
+	if m.Deadline != 0 {
+		n += 1 + sovSyndicateApi(uint64(m.Deadline))
+	}
+	if m.Rollback != 0 {
+		n += 1 + sovSyndicateApi(uint64(m.Rollback))
+	}
+	return n
+}
+
+func (m *StoreResult) Size() (n int) {
+	var l int
+	_ = l
+	if m.Version != 0 {
+		n += 1 + sovSyndicateApi(uint64(m.Version))
+	}
+	if m.Ring {
+		n += 2
+	}
+	if m.Builder {
+		n += 2
+	}
+	l = len(m.ErrMsg)
+	if l > 0 {
+		n += 1 + l + sovSyndicateApi(uint64(l))
+	}
+	return n
+}
+
+func (m *StatusRequest) Size() (n int) {
+	var l int
+	_ = l
+	if m.Ring {
+		n += 2
+	}
+	if m.Builder {
+		n += 2
+	}
+	return n
+}
+
+func (m *StatusMsg) Size() (n int) {
+	var l int
+	_ = l
+	if m.Version != 0 {
+		n += 1 + sovSyndicateApi(uint64(m.Version))
+	}
+	l = len(m.Ringstats)
+	if l > 0 {
+		n += 1 + l + sovSyndicateApi(uint64(l))
+	}
+	l = len(m.Builderstats)
+	if l > 0 {
+		n += 1 + l + sovSyndicateApi(uint64(l))
+	}
+	l = len(m.Master)
+	if l > 0 {
+		n += 1 + l + sovSyndicateApi(uint64(l))
+	}
+	return n
+}
+
 func sovSyndicateApi(x uint64) (n int) {
 	for {
 		n++
@@ -1796,559 +1901,6 @@ func sovSyndicateApi(x uint64) (n int) {
 }
 func sozSyndicateApi(x uint64) (n int) {
 	return sovSyndicateApi(uint64((x << 1) ^ uint64((int64(x) >> 63))))
-}
-func (m *RingMsg) Unmarshal(data []byte) error {
-	l := len(data)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowSyndicateApi
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := data[iNdEx]
-			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: RingMsg: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: RingMsg: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
-			}
-			m.Version = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				m.Version |= (int64(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ring", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return ErrInvalidLengthSyndicateApi
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ring = append(m.Ring[:0], data[iNdEx:postIndex]...)
-			if m.Ring == nil {
-				m.Ring = []byte{}
-			}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Builder", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return ErrInvalidLengthSyndicateApi
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Builder = append(m.Builder[:0], data[iNdEx:postIndex]...)
-			if m.Builder == nil {
-				m.Builder = []byte{}
-			}
-			iNdEx = postIndex
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Deadline", wireType)
-			}
-			m.Deadline = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				m.Deadline |= (int64(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Rollback", wireType)
-			}
-			m.Rollback = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				m.Rollback |= (int64(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := skipSyndicateApi(data[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthSyndicateApi
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *StoreResult) Unmarshal(data []byte) error {
-	l := len(data)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowSyndicateApi
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := data[iNdEx]
-			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: StoreResult: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: StoreResult: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
-			}
-			m.Version = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				m.Version |= (int64(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ring", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				v |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Ring = bool(v != 0)
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Builder", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				v |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Builder = bool(v != 0)
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ErrMsg", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthSyndicateApi
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ErrMsg = string(data[iNdEx:postIndex])
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipSyndicateApi(data[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthSyndicateApi
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *StatusRequest) Unmarshal(data []byte) error {
-	l := len(data)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowSyndicateApi
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := data[iNdEx]
-			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: StatusRequest: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: StatusRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ring", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				v |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Ring = bool(v != 0)
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Builder", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				v |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Builder = bool(v != 0)
-		default:
-			iNdEx = preIndex
-			skippy, err := skipSyndicateApi(data[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthSyndicateApi
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *StatusMsg) Unmarshal(data []byte) error {
-	l := len(data)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowSyndicateApi
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := data[iNdEx]
-			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: StatusMsg: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: StatusMsg: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
-			}
-			m.Version = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				m.Version |= (int64(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ringstats", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthSyndicateApi
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ringstats = string(data[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Builderstats", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthSyndicateApi
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Builderstats = string(data[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Master", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSyndicateApi
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthSyndicateApi
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Master = string(data[iNdEx:postIndex])
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipSyndicateApi(data[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthSyndicateApi
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
 }
 func (m *EmptyMsg) Unmarshal(data []byte) error {
 	l := len(data)
@@ -3038,6 +2590,85 @@ func (m *Conf) Unmarshal(data []byte) error {
 				}
 			}
 			m.RestartRequired = bool(v != 0)
+		default:
+			iNdEx = preIndex
+			skippy, err := skipSyndicateApi(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthSyndicateApi
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SubscriberID) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowSyndicateApi
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SubscriberID: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SubscriberID: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthSyndicateApi
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Id = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipSyndicateApi(data[iNdEx:])
@@ -3772,6 +3403,559 @@ func (m *SearchResult) Unmarshal(data []byte) error {
 			if err := m.Nodes[len(m.Nodes)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipSyndicateApi(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthSyndicateApi
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *RingMsg) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowSyndicateApi
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: RingMsg: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: RingMsg: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
+			}
+			m.Version = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Version |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ring", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				byteLen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthSyndicateApi
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Ring = append(m.Ring[:0], data[iNdEx:postIndex]...)
+			if m.Ring == nil {
+				m.Ring = []byte{}
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builder", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				byteLen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthSyndicateApi
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Builder = append(m.Builder[:0], data[iNdEx:postIndex]...)
+			if m.Builder == nil {
+				m.Builder = []byte{}
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Deadline", wireType)
+			}
+			m.Deadline = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Deadline |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Rollback", wireType)
+			}
+			m.Rollback = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Rollback |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipSyndicateApi(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthSyndicateApi
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StoreResult) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowSyndicateApi
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StoreResult: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StoreResult: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
+			}
+			m.Version = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Version |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ring", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Ring = bool(v != 0)
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builder", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Builder = bool(v != 0)
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ErrMsg", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthSyndicateApi
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ErrMsg = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipSyndicateApi(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthSyndicateApi
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StatusRequest) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowSyndicateApi
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StatusRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StatusRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ring", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Ring = bool(v != 0)
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builder", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Builder = bool(v != 0)
+		default:
+			iNdEx = preIndex
+			skippy, err := skipSyndicateApi(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthSyndicateApi
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StatusMsg) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowSyndicateApi
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StatusMsg: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StatusMsg: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
+			}
+			m.Version = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Version |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ringstats", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthSyndicateApi
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Ringstats = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builderstats", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthSyndicateApi
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Builderstats = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Master", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSyndicateApi
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthSyndicateApi
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Master = string(data[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

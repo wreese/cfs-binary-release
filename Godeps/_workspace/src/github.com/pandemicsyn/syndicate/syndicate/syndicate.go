@@ -4,13 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"path/filepath"
 	"strings"
 	"sync"
 
-	"github.com/gholt/brimtext"
+	log "github.com/Sirupsen/logrus"
 	"github.com/gholt/ring"
 	pb "github.com/pandemicsyn/syndicate/api/proto"
 	"golang.org/x/net/context"
@@ -19,20 +18,19 @@ import (
 const (
 	_SYN_REGISTER_TIMEOUT = 4
 	_SYN_DIAL_TIMEOUT     = 2
-	DefaultPort           = 8443                   //The default port to use for the main backend service
-	DefaultCmdCtrlPort    = 4443                   //The default port to use for cmdctrl (address0)
-	DefaultMsgRingPort    = 8001                   //The default port the TCPMsgRing should use (address1)
-	DefaultRingDir        = "/etc/oort/ring"       //The default directory where to store the rings
-	DefaultCertFile       = "/etc/oort/server.crt" //The default SSL Cert
-	DefaultCertKey        = "/etc/oort/server.key" //The default SSL Key
+	DefaultPort           = 8443                        //The default port to use for the main backend service
+	DefaultCmdCtrlPort    = 4443                        //The default port to use for cmdctrl (address0)
+	DefaultMsgRingPort    = 8001                        //The default port the TCPMsgRing should use (address1)
+	DefaultStorePort      = 6379                        //The default port the Store's should use (address2)
+	DefaultRingDir        = "/etc/syndicate/ring"       //The default directory where to store the rings
+	DefaultCertFile       = "/etc/syndicate/server.crt" //The default SSL Cert
+	DefaultCertKey        = "/etc/syndicate/server.key" //The default SSL Key
 )
 
 var (
 	DefaultNetFilter  = []string{"10.0.0.0/8", "192.168.0.0/16"} //Default the netfilters to private networks
 	DefaultTierFilter = []string{".*"}                           //Default to ...anything
-)
 
-var (
 	InvalidTiers = errors.New("Tier0 already present in ring")
 	InvalidAddrs = errors.New("No valid addresses provided")
 )
@@ -40,6 +38,7 @@ var (
 //Config options for syndicate manager
 type Config struct {
 	Master           bool
+	Debug            bool
 	Slaves           []string
 	NetFilter        []string
 	TierFilter       []string
@@ -47,6 +46,7 @@ type Config struct {
 	MsgRingPort      int
 	CmdCtrlPort      int
 	CmdCtrlIndex     int
+	StorePort        int
 	RingDir          string
 	CertFile         string
 	KeyFile          string
@@ -67,18 +67,21 @@ func parseSlaveAddrs(slaveAddrs []string) []*RingSlave {
 //Server is the syndicate manager instance
 type Server struct {
 	sync.RWMutex
-	servicename  string
-	cfg          *Config
-	r            ring.Ring
-	b            *ring.Builder
-	slaves       []*RingSlave
-	localAddress string
-	rb           *[]byte // even a 1000 node ring is reasonably small (17k) so just keep the current ring in mem
-	bb           *[]byte
-	netlimits    []*net.IPNet
-	tierlimits   []string
-	managedNodes map[uint64]ManagedNode
-	changeChan   chan *changeMsg
+	servicename    string
+	cfg            *Config
+	ctxlog         *log.Entry
+	r              ring.Ring
+	b              *ring.Builder
+	slaves         []*RingSlave
+	localAddress   string
+	rb             *[]byte // even a 1000 node ring is reasonably small (17k) so just keep the current ring in mem
+	bb             *[]byte
+	netlimits      []*net.IPNet
+	tierlimits     []string
+	managedNodes   map[uint64]ManagedNode
+	changeChan     chan *changeMsg
+	ringSubs       *RingSubscribers
+	subsChangeChan chan *changeMsg
 	// mostly just present to aid mocking
 	rbLoaderFn   func(path string) ([]byte, error)
 	rbPersistFn  func(c *RingChange, renameMaster bool) (error, error)
@@ -115,6 +118,11 @@ func NewServer(cfg *Config, servicename string, opts ...MockOpt) (*Server, error
 	s := new(Server)
 	s.cfg = cfg
 	s.servicename = servicename
+	log.SetFormatter(&log.TextFormatter{})
+	if s.cfg.Debug {
+		log.SetLevel(log.DebugLevel)
+	}
+	s.ctxlog = log.WithField("service", s.servicename)
 	s.parseConfig()
 
 	for _, opt := range opts {
@@ -141,7 +149,6 @@ func NewServer(cfg *Config, servicename string, opts ...MockOpt) (*Server, error
 	FatalIf(err, fmt.Sprintf("Builder file (%s) load failed:", bfile))
 	s.r, _, err = ring.RingOrBuilder(rfile)
 	FatalIf(err, fmt.Sprintf("Ring file (%s) load failed:", rfile))
-	log.Println("Ring version is:", s.r.Version())
 	//TODO: verify ring version in bytes matches what we expect
 	s.rb, s.bb, err = s.loadRingBuilderBytes(s.r.Version())
 	FatalIf(err, "Attempting to load ring/builder bytes")
@@ -154,24 +161,34 @@ func NewServer(cfg *Config, servicename string, opts ...MockOpt) (*Server, error
 		s.netlimits = append(s.netlimits, n)
 	}
 	s.tierlimits = cfg.TierFilter
-	s.managedNodes = bootstrapManagedNodes(s.r, s.cfg.CmdCtrlPort)
+	s.managedNodes = bootstrapManagedNodes(s.r, s.cfg.CmdCtrlPort, s.ctxlog)
 	s.changeChan = make(chan *changeMsg, 1)
+	s.subsChangeChan = make(chan *changeMsg, 1)
 	go s.RingChangeManager()
+	s.ringSubs = &RingSubscribers{
+		subs: make(map[string]chan *pb.Ring),
+	}
+	go s.ringSubscribersNotify()
 	s.slaves = parseSlaveAddrs(cfg.Slaves)
 	if len(s.slaves) == 0 {
-		log.Println("!! Running without slaves, have no one to register !!")
+		s.ctxlog.Debug("running without slaves")
 		return s, nil
 	}
 
 	failcount := 0
 	for _, slave := range s.slaves {
 		if err = s.RegisterSlave(slave); err != nil {
-			log.Println("Got error:", err)
+			s.ctxlog.WithFields(
+				log.Fields{
+					"slave":  slave.addr,
+					"status": slave.status,
+					"err":    err,
+				}).Warning("Error registering slave")
 			failcount++
 		}
 	}
 	if failcount > (len(s.slaves) / 2) {
-		log.Fatalln("More than half of the ring slaves failed to respond. Exiting.")
+		return s, fmt.Errorf("More than half of the ring slaves failed to respond. Exiting.")
 	}
 	return s, nil
 }
@@ -179,39 +196,42 @@ func NewServer(cfg *Config, servicename string, opts ...MockOpt) (*Server, error
 func (s *Server) parseConfig() {
 	if s.cfg.NetFilter == nil {
 		s.cfg.NetFilter = DefaultNetFilter
-		log.Println("Config didn't specify netfilter, using default:", DefaultNetFilter)
+		s.ctxlog.Debugln("Config didn't specify netfilter, using default:", DefaultNetFilter)
 	}
 	if s.cfg.TierFilter == nil {
 		s.cfg.TierFilter = DefaultTierFilter
-		log.Println("Config didn't specify tierfilter, using default:", DefaultTierFilter)
+		s.ctxlog.Debugln("Config didn't specify tierfilter, using default:", DefaultTierFilter)
 	}
 
 	if s.cfg.Port == 0 {
-		log.Println("Config didn't specify port, using default:", DefaultPort)
+		s.ctxlog.Debugln("Config didn't specify port, using default:", DefaultPort)
 		s.cfg.Port = DefaultPort
 	}
 	if s.cfg.MsgRingPort == 0 {
-		log.Println("Config didn't specify msg ring port, using default:", DefaultMsgRingPort)
+		s.ctxlog.Debugln("Config didn't specify msg ring port, using default:", DefaultMsgRingPort)
 		s.cfg.MsgRingPort = DefaultMsgRingPort
 	}
+	if s.cfg.StorePort == 0 {
+		s.ctxlog.Debugln("Config didn't specify store port, using default:", DefaultStorePort)
+		s.cfg.StorePort = DefaultStorePort
+	}
 	if s.cfg.CmdCtrlPort == 0 {
-		log.Println("Config didn't specify cmdctrl port, using default:", DefaultCmdCtrlPort)
+		s.ctxlog.Debugln("Config didn't specify cmdctrl port, using default:", DefaultCmdCtrlPort)
 		s.cfg.CmdCtrlPort = DefaultCmdCtrlPort
 	}
 	if s.cfg.CmdCtrlIndex == 0 {
-		log.Println("Using default CmdCtrlIndex: 0")
+		s.ctxlog.Debugln("Using default CmdCtrlIndex: 0")
 	}
 	if s.cfg.RingDir == "" {
 		s.cfg.RingDir = filepath.Join(DefaultRingDir, s.servicename)
-		log.Println("Config didn't specify ringdir, using default:", s.cfg.RingDir)
-
+		s.ctxlog.Debugln("Config didn't specify ringdir, using default:", s.cfg.RingDir)
 	}
 	if s.cfg.CertFile == "" {
-		log.Println("Config didn't specify certfile, using default:", DefaultCertFile)
+		s.ctxlog.Debugln("Config didn't specify certfile, using default:", DefaultCertFile)
 		s.cfg.CertFile = DefaultCertFile
 	}
 	if s.cfg.KeyFile == "" {
-		log.Println("Config didn't specify keyfile, using default:", DefaultCertKey)
+		s.ctxlog.Debugln("Config didn't specify keyfile, using default:", DefaultCertKey)
 		s.cfg.KeyFile = DefaultCertKey
 	}
 }
@@ -229,9 +249,10 @@ func (s *Server) loadRingBuilderBytes(version int64) (ring, builder *[]byte, err
 }
 
 type RingChange struct {
-	b *ring.Builder
-	r ring.Ring
-	v int64
+	b            *ring.Builder
+	r            ring.Ring
+	v            int64
+	removedNodes []uint64
 }
 
 //ringBuilderPersisterFn is the default ring & builder persistence method used when a ring change is triggered.
@@ -252,11 +273,9 @@ func (s *Server) ringBuilderPersisterFn(c *RingChange, renameMaster bool) (error
 	}
 	//Write Ring/Builder out to plain servicename.ring and servicename.builder files
 	if err := ring.PersistRingOrBuilder(nil, c.b, fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename)); err != nil {
-		log.Println("Unable to persist builder!")
 		return err, nil
 	}
 	if err := ring.PersistRingOrBuilder(c.r, nil, fmt.Sprintf("%s/%s.ring", s.cfg.RingDir, s.servicename)); err != nil {
-		log.Println("Unable to persist ring!")
 		return nil, err
 	}
 	return nil, nil
@@ -266,11 +285,19 @@ func (s *Server) ringBuilderPersisterFn(c *RingChange, renameMaster bool) (error
 func (s *Server) applyRingChange(c *RingChange) error {
 	builderErr, ringErr := s.rbPersistFn(c, false)
 	if builderErr != nil {
-		log.Println("Error persisting builder")
+		s.ctxlog.WithFields(log.Fields{
+			"path":    fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename),
+			"ringver": c.v,
+			"err":     builderErr,
+		}).Warning("Unable to persist builder")
 		return builderErr
 	}
 	if ringErr != nil {
-		log.Println("Error persisting ring")
+		s.ctxlog.WithFields(log.Fields{
+			"path":    fmt.Sprintf("%s/%s.ring", s.cfg.RingDir, s.servicename),
+			"ringver": c.v,
+			"err":     ringErr,
+		}).Warning("Unable to persist ring")
 		return ringErr
 	}
 	newRB, newBB, err := s.loadRingBuilderBytes(c.v)
@@ -287,6 +314,9 @@ func (s *Server) applyRingChange(c *RingChange) error {
 	s.bb = newBB
 	s.b = c.b
 	s.r = c.r
+	if len(c.removedNodes) != 0 {
+		s.removeManagedNodes(c.removedNodes)
+	}
 	go s.NotifyNodes()
 	return nil
 }
@@ -296,35 +326,40 @@ func (s *Server) applyRingChange(c *RingChange) error {
 func (s *Server) AddNode(c context.Context, e *pb.Node) (*pb.RingStatus, error) {
 	s.Lock()
 	defer s.Unlock()
-	log.Println("Got AddNode request")
+	s.ctxlog.Debug("Got AddNode request")
 	b, err := s.getBuilderFn(fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename))
 	if err != nil {
-		log.Println("Unable to load builder for change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"path": fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename),
+			"err":  err,
+		}).Warning("Unable to load builder for change")
 		return &pb.RingStatus{}, err
 	}
 	n, err := b.AddNode(e.Active, e.Capacity, e.Tiers, e.Addresses, e.Meta, e.Conf)
 	if err != nil {
 		return &pb.RingStatus{}, err
 	}
-	report := [][]string{
-		[]string{"ID:", fmt.Sprintf("%016x", n.ID())},
-		[]string{"RAW ID", fmt.Sprintf("%d", n.ID())},
-		[]string{"Active:", fmt.Sprintf("%v", n.Active())},
-		[]string{"Capacity:", fmt.Sprintf("%d", n.Capacity())},
-		[]string{"Tiers:", strings.Join(n.Tiers(), "\n")},
-		[]string{"Addresses:", strings.Join(n.Addresses(), "\n")},
-		[]string{"Meta:", n.Meta()},
-		[]string{"Conf:", fmt.Sprintf("%s", n.Config())},
-	}
-	log.Print(brimtext.Align(report, nil))
+	s.ctxlog.WithFields(log.Fields{
+		"ID":        n.ID(),
+		"Active":    n.Active(),
+		"Capacity":  n.Capacity(),
+		"Tiers":     strings.Join(n.Tiers(), "|"),
+		"Addresses": strings.Join(n.Addresses(), "|"),
+		"Meta":      n.Meta(),
+		"Config":    n.Config(),
+	}).Debug("proposed ring entry")
 	newRing := b.Ring()
-	log.Println("Attempting to apply ring version:", newRing.Version())
+	s.ctxlog.WithField("proposed-ringver", newRing.Version()).Info("attempting to apply ring version")
 	err = s.applyRingChange(&RingChange{b: b, r: newRing, v: newRing.Version()})
 	if err != nil {
-		log.Println("Failed to apply ring change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"proposed-ringver": newRing.Version(),
+			"ringver":          s.r.Version(),
+			"err":              err,
+		}).Warning("failed to apply ring change")
 		return &pb.RingStatus{Status: false, Version: s.r.Version()}, err
 	}
-	log.Println("Ring version is now:", s.r.Version())
+	s.ctxlog.WithField("ringver", s.r.Version()).Info("updated ring")
 	return &pb.RingStatus{Status: true, Version: s.r.Version()}, nil
 }
 
@@ -347,10 +382,13 @@ func (s *Server) getRing(path string) (ring.Ring, error) {
 func (s *Server) RemoveNode(c context.Context, n *pb.Node) (*pb.RingStatus, error) {
 	s.Lock()
 	defer s.Unlock()
-	log.Println("Got RemoveNode request for:", n.Id)
+	s.ctxlog.Debug("Got RemoveNode request")
 	b, err := s.getBuilderFn(fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename))
 	if err != nil {
-		log.Println("Unable to load builder for change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"path": fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename),
+			"err":  err,
+		}).Warning("Unable to load builder for change")
 		return &pb.RingStatus{Status: false, Version: s.r.Version()}, err
 	}
 	node := b.Node(n.Id)
@@ -359,14 +397,23 @@ func (s *Server) RemoveNode(c context.Context, n *pb.Node) (*pb.RingStatus, erro
 	}
 	b.RemoveNode(n.Id)
 	newRing := b.Ring()
-	go s.removeManagedNode(n.Id)
-	log.Println("Attempting to apply ring version:", newRing.Version())
-	err = s.applyRingChange(&RingChange{b: b, r: newRing, v: newRing.Version()})
+	change := RingChange{
+		b:            b,
+		r:            newRing,
+		v:            newRing.Version(),
+		removedNodes: []uint64{n.Id},
+	}
+	s.ctxlog.WithField("proposed-ringver", newRing.Version()).Info("attempting to apply ring version")
+	err = s.applyRingChange(&change)
 	if err != nil {
-		log.Println(" Failed to apply ring change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"proposed-ringver": newRing.Version(),
+			"ringver":          s.r.Version(),
+			"err":              err,
+		}).Warning("failed to apply ring change")
 		return &pb.RingStatus{Status: false, Version: s.r.Version()}, err
 	}
-	log.Println("Ring version is now:", s.r.Version())
+	s.ctxlog.WithField("ringver", s.r.Version()).Info("updated ring")
 	return &pb.RingStatus{Status: true, Version: s.r.Version()}, nil
 }
 
@@ -383,18 +430,25 @@ func (s *Server) SetConf(c context.Context, conf *pb.Conf) (*pb.RingStatus, erro
 	defer s.Unlock()
 	b, err := s.getBuilderFn(fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename))
 	if err != nil {
-		log.Println("Unable to load builder for change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"path": fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename),
+			"err":  err,
+		}).Warning("Unable to load builder for change")
 		return &pb.RingStatus{}, err
 	}
 	b.SetConfig(conf.Conf)
 	newRing := b.Ring()
-	log.Println("Attempting to apply ring version:", newRing.Version())
+	s.ctxlog.WithField("proposed-ringver", newRing.Version()).Info("attempting to apply ring version")
 	err = s.applyRingChange(&RingChange{b: b, r: newRing, v: newRing.Version()})
 	if err != nil {
-		log.Println("Failed to apply ring change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"proposed-ringver": newRing.Version(),
+			"ringver":          s.r.Version(),
+			"err":              err,
+		}).Warning("failed to apply ring change")
 		return &pb.RingStatus{Status: false, Version: s.r.Version()}, err
 	}
-	log.Println("Ring version is now:", s.r.Version())
+	s.ctxlog.WithField("ringver", s.r.Version()).Info("updated ring")
 	return &pb.RingStatus{Status: true, Version: s.r.Version()}, nil
 }
 
@@ -403,7 +457,10 @@ func (s *Server) SetActive(c context.Context, n *pb.Node) (*pb.RingStatus, error
 	defer s.Unlock()
 	b, err := s.getBuilderFn(fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename))
 	if err != nil {
-		log.Println("Unable to load builder for change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"path": fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename),
+			"err":  err,
+		}).Warning("Unable to load builder for change")
 		return &pb.RingStatus{Status: false, Version: s.r.Version()}, err
 	}
 	node := b.Node(n.Id)
@@ -412,13 +469,17 @@ func (s *Server) SetActive(c context.Context, n *pb.Node) (*pb.RingStatus, error
 	}
 	node.SetActive(n.Active)
 	newRing := b.Ring()
-	log.Println("Attempting to apply ring version:", newRing.Version())
+	s.ctxlog.WithField("proposed-ringver", newRing.Version()).Info("attempting to apply ring version")
 	err = s.applyRingChange(&RingChange{b: b, r: newRing, v: newRing.Version()})
 	if err != nil {
-		log.Println("Failed to apply ring change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"proposed-ringver": newRing.Version(),
+			"ringver":          s.r.Version(),
+			"err":              err,
+		}).Warning("failed to apply ring change")
 		return &pb.RingStatus{Status: false, Version: s.r.Version()}, err
 	}
-	log.Println("Ring version is now:", s.r.Version())
+	s.ctxlog.WithField("ringver", s.r.Version()).Info("updated ring")
 	return &pb.RingStatus{Status: true, Version: s.r.Version()}, nil
 }
 
@@ -427,7 +488,10 @@ func (s *Server) SetCapacity(c context.Context, n *pb.Node) (*pb.RingStatus, err
 	defer s.Unlock()
 	b, err := s.getBuilderFn(fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename))
 	if err != nil {
-		log.Println("Unable to load builder for change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"path": fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename),
+			"err":  err,
+		}).Warning("Unable to load builder for change")
 		return &pb.RingStatus{Status: false, Version: s.r.Version()}, err
 	}
 	node := b.Node(n.Id)
@@ -436,13 +500,17 @@ func (s *Server) SetCapacity(c context.Context, n *pb.Node) (*pb.RingStatus, err
 	}
 	node.SetCapacity(n.Capacity)
 	newRing := b.Ring()
-	log.Println("Attempting to apply ring version:", newRing.Version())
+	s.ctxlog.WithField("proposed-ringver", newRing.Version()).Info("attempting to apply ring version")
 	err = s.applyRingChange(&RingChange{b: b, r: newRing, v: newRing.Version()})
 	if err != nil {
-		log.Println("Failed to apply ring change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"proposed-ringver": newRing.Version(),
+			"ringver":          s.r.Version(),
+			"err":              err,
+		}).Warning("failed to apply ring change")
 		return &pb.RingStatus{Status: false, Version: s.r.Version()}, err
 	}
-	log.Println("Ring version is now:", s.r.Version())
+	s.ctxlog.WithField("ringver", s.r.Version()).Info("updated ring")
 	return &pb.RingStatus{Status: true, Version: s.r.Version()}, nil
 }
 
@@ -454,7 +522,10 @@ func (s *Server) ReplaceTiers(c context.Context, n *pb.Node) (*pb.RingStatus, er
 
 	b, err := s.getBuilderFn(fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename))
 	if err != nil {
-		log.Println("Unable to load builder for change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"path": fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename),
+			"err":  err,
+		}).Warning("Unable to load builder for change")
 		return &pb.RingStatus{Status: false, Version: s.r.Version()}, err
 	}
 	node := b.Node(n.Id)
@@ -466,13 +537,17 @@ func (s *Server) ReplaceTiers(c context.Context, n *pb.Node) (*pb.RingStatus, er
 	}
 	node.ReplaceTiers(n.Tiers)
 	newRing := b.Ring()
-	log.Println("Attempting to apply ring version:", newRing.Version())
+	s.ctxlog.WithField("proposed-ringver", newRing.Version()).Info("attempting to apply ring version")
 	err = s.applyRingChange(&RingChange{b: b, r: newRing, v: newRing.Version()})
 	if err != nil {
-		log.Println("Failed to apply ring change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"proposed-ringver": newRing.Version(),
+			"ringver":          s.r.Version(),
+			"err":              err,
+		}).Warning("failed to apply ring change")
 		return &pb.RingStatus{Status: false, Version: s.r.Version()}, err
 	}
-	log.Println("Ring version is now:", s.r.Version())
+	s.ctxlog.WithField("ringver", s.r.Version()).Info("updated ring")
 	return &pb.RingStatus{Status: true, Version: s.r.Version()}, nil
 }
 
@@ -500,7 +575,10 @@ func (s *Server) ReplaceAddresses(c context.Context, n *pb.Node) (*pb.RingStatus
 
 	b, err := s.getBuilderFn(fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename))
 	if err != nil {
-		log.Println("Unable to load builder for change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"path": fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename),
+			"err":  err,
+		}).Warning("Unable to load builder for change")
 		return &pb.RingStatus{Status: false, Version: s.r.Version()}, err
 	}
 	node := b.Node(n.Id)
@@ -509,13 +587,17 @@ func (s *Server) ReplaceAddresses(c context.Context, n *pb.Node) (*pb.RingStatus
 	}
 	node.ReplaceAddresses(n.Addresses)
 	newRing := b.Ring()
-	log.Println("Attempting to apply ring version:", newRing.Version())
+	s.ctxlog.WithField("proposed-ringver", newRing.Version()).Info("attempting to apply ring version")
 	err = s.applyRingChange(&RingChange{b: b, r: newRing, v: newRing.Version()})
 	if err != nil {
-		log.Println("Failed to apply ring change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"proposed-ringver": newRing.Version(),
+			"ringver":          s.r.Version(),
+			"err":              err,
+		}).Warning("failed to apply ring change")
 		return &pb.RingStatus{Status: false, Version: s.r.Version()}, err
 	}
-	log.Println("Ring version is now:", s.r.Version())
+	s.ctxlog.WithField("ringver", s.r.Version()).Info("updated ring")
 	return &pb.RingStatus{Status: true, Version: s.r.Version()}, nil
 }
 
@@ -560,7 +642,7 @@ func (s *Server) SearchNodes(c context.Context, n *pb.Node) (*pb.SearchResult, e
 			filter = append(filter, fmt.Sprintf("address~=%s", v))
 		}
 	}
-	log.Println("filter:", filter)
+	s.ctxlog.Println("filter:", filter)
 	nodes, err := s.r.Nodes().Filter(filter)
 	res := make([]*pb.Node, len(nodes))
 	if err != nil {
@@ -596,7 +678,7 @@ func (s *Server) GetNodeConfig(c context.Context, n *pb.Node) (*pb.RingConf, err
 		Status: &pb.RingStatus{Status: true, Version: s.r.Version()},
 		Conf:   &pb.Conf{Conf: node.Config(), RestartRequired: false},
 	}
-	log.Println(config)
+	s.ctxlog.Println(config)
 	return config, nil
 }
 
@@ -605,6 +687,38 @@ func (s *Server) GetRing(c context.Context, e *pb.EmptyMsg) (*pb.Ring, error) {
 	s.RLock()
 	defer s.RUnlock()
 	return &pb.Ring{Version: s.r.Version(), Ring: *s.rb}, nil
+}
+
+//GetRingStream return a stream of rings as they become available
+func (s *Server) GetRingStream(req *pb.SubscriberID, stream pb.Syndicate_GetRingStreamServer) error {
+	s.RLock()
+	ringChange := s.addRingSubscriber(req.Id)
+	streamFinished := false
+	if err := stream.Send(&pb.Ring{Version: s.r.Version(), Ring: *s.rb}); err != nil {
+		s.RUnlock()
+		s.ctxlog.WithField("err", err).Error("Error GetRingStream initial send")
+		streamFinished = true
+		return s.removeRingSubscriber(req.Id)
+	}
+	s.RUnlock()
+	for ring := range ringChange {
+		if err := stream.Send(ring); err != nil {
+			s.ctxlog.WithField("err", err).Error("Error GetRingStream send")
+			streamFinished = true
+			break
+		}
+	}
+	s.ctxlog.Debug("closing ring sub stream")
+	//our chan got closed before expected
+	if !streamFinished {
+		err := s.removeRingSubscriber(req.Id)
+		if err != nil {
+			s.ctxlog.WithFields(log.Fields{"key": req.Id,
+				"err": err}).Error("ring sub remove failed after chan closed while stream active")
+		}
+		return fmt.Errorf("ring change chan closed")
+	}
+	return s.removeRingSubscriber(req.Id)
 }
 
 //validNodeIP verifies that the provided ip is not a loopback or multicast address
@@ -669,10 +783,13 @@ func (s *Server) nodeInRing(hostname string, addrs []string) bool {
 func (s *Server) RegisterNode(c context.Context, r *pb.RegisterRequest) (*pb.NodeConfig, error) {
 	s.Lock()
 	defer s.Unlock()
-	log.Printf("Got Register request: %#v", r)
+	s.ctxlog.Debugf("Got Register request: %#v", r)
 	b, err := s.getBuilderFn(fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename))
 	if err != nil {
-		log.Println("Unable to load builder for change:", err)
+		s.ctxlog.WithFields(log.Fields{
+			"path": fmt.Sprintf("%s/%s.builder", s.cfg.RingDir, s.servicename),
+			"err":  err,
+		}).Warning("Unable to load builder for change")
 		return &pb.NodeConfig{}, err
 	}
 
@@ -680,12 +797,13 @@ func (s *Server) RegisterNode(c context.Context, r *pb.RegisterRequest) (*pb.Nod
 	for _, v := range r.Addrs {
 		i, _, err := net.ParseCIDR(v)
 		if err != nil {
-			log.Println("Encountered unknown network addr", v, err)
+			s.ctxlog.WithFields(log.Fields{"addr": v, "err": err}).Warning("Unknown network addr received during registration")
 			continue
 		}
 		if s.validNodeIP(i) {
 			addrs = append(addrs, fmt.Sprintf("%s:%d", i.String(), s.cfg.CmdCtrlPort))
 			addrs = append(addrs, fmt.Sprintf("%s:%d", i.String(), s.cfg.MsgRingPort))
+			addrs = append(addrs, fmt.Sprintf("%s:%d", i.String(), s.cfg.StorePort))
 		}
 	}
 	switch {
@@ -695,12 +813,22 @@ func (s *Server) RegisterNode(c context.Context, r *pb.RegisterRequest) (*pb.Nod
 		a := strings.Join(addrs, "|")
 		metanodes, _ := s.r.Nodes().Filter([]string{fmt.Sprintf("meta~=%s.*", r.Hostname)})
 		if len(metanodes) > 1 {
-			log.Println("Found more than one meta match when attempting to find node ID")
+			s.ctxlog.WithFields(log.Fields{
+				"ringver":      s.r.Version(),
+				"addrs-search": a,
+				"meta-search":  r.Hostname,
+				"err":          "more than one meta match when search for node ID",
+			}).Warning("error registering node")
 			return &pb.NodeConfig{}, fmt.Errorf("Node already in ring/unable to obtain ID (too many matches)")
 		}
 		addrnodes, _ := s.r.Nodes().Filter([]string{fmt.Sprintf("address~=%s", a)})
 		if len(addrnodes) > 1 {
-			log.Println("Found more than one addr match when attempting to find node ID")
+			s.ctxlog.WithFields(log.Fields{
+				"ringver":      s.r.Version(),
+				"addrs-search": a,
+				"meta-search":  r.Hostname,
+				"err":          "more than one addr match when search for node ID",
+			}).Warning("error registering node")
 			return &pb.NodeConfig{}, fmt.Errorf("Node already in ring/unable to obtain ID (too many matches)")
 		}
 		var metaid uint64
@@ -712,15 +840,21 @@ func (s *Server) RegisterNode(c context.Context, r *pb.RegisterRequest) (*pb.Nod
 			addrid = addrnodes[0].ID()
 		}
 		if metaid != addrid {
-			log.Printf("Node already in ring, addrid and metaid missmatch: addrid %d vs metaid %d", addrid, metaid)
+			s.ctxlog.WithFields(log.Fields{
+				"ringver":      s.r.Version(),
+				"addrid":       addrid,
+				"addrs-search": a,
+				"metaid":       metaid,
+				"meta-search":  r.Hostname,
+				"err":          "addrid and metaid conflict (are not the same)",
+			}).Warning("error registering node")
 			return &pb.NodeConfig{}, fmt.Errorf("Node already in ring, unable to obtain ID (id by addr and id by meta do not match")
 		}
-		log.Println("Node already in ring, sending localid:", addrid)
+		s.ctxlog.WithField("id", addrid).Info("reregistered existing node")
 		return &pb.NodeConfig{Localid: addrid, Ring: *s.rb}, nil
 	case len(r.Tiers) == 0:
 		return &pb.NodeConfig{}, fmt.Errorf("No tier0 provided")
 	case len(r.Tiers) > 0:
-		log.Println("wtf not even")
 		if !s.validTiers(r.Tiers) {
 			return &pb.NodeConfig{}, InvalidTiers
 		}
@@ -756,7 +890,7 @@ func (s *Server) RegisterNode(c context.Context, r *pb.RegisterRequest) (*pb.Nod
 		weight = ExtractCapacity("/data", r.Hardware.Disks)
 		nodeEnabled = false
 	default:
-		log.Println("No weight assignment strategy specified, adding unconfigured node!")
+		s.ctxlog.Debug("No weight assignment strategy specified, adding unconfigured node!")
 		if r.Hardware == nil {
 			return &pb.NodeConfig{}, fmt.Errorf("No hardware profile provided but required")
 		}
@@ -770,30 +904,35 @@ func (s *Server) RegisterNode(c context.Context, r *pb.RegisterRequest) (*pb.Nod
 	if err != nil {
 		return &pb.NodeConfig{}, err
 	}
-	report := [][]string{
-		[]string{"ID:", fmt.Sprintf("%016x", n.ID())},
-		[]string{"RAW ID", fmt.Sprintf("%d", n.ID())},
-		[]string{"Active:", fmt.Sprintf("%v", n.Active())},
-		[]string{"Capacity:", fmt.Sprintf("%d", n.Capacity())},
-		[]string{"Tiers:", strings.Join(n.Tiers(), "\n")},
-		[]string{"Addresses:", strings.Join(n.Addresses(), "\n")},
-		[]string{"Meta:", n.Meta()},
-		[]string{"Conf:", fmt.Sprintf("%s", n.Config())},
-	}
-	log.Print(brimtext.Align(report, nil))
+	s.ctxlog.WithFields(log.Fields{
+		"ID":        n.ID(),
+		"Active":    n.Active(),
+		"Capacity":  n.Capacity(),
+		"Tiers":     strings.Join(n.Tiers(), "|"),
+		"Addresses": strings.Join(n.Addresses(), "|"),
+		"Meta":      n.Meta(),
+		"Config":    n.Config(),
+	}).Debug("proposed ring entry")
 	newRing := b.Ring()
-	log.Println("Attempting to apply ring version:", newRing.Version())
+	s.ctxlog.WithField("proposed-ringver", newRing.Version()).Info("attempting to apply ring version")
 	err = s.applyRingChange(&RingChange{b: b, r: newRing, v: newRing.Version()})
 	if err != nil {
-		log.Println("Failed to apply ring change:", err)
-		log.Println("Ring version is now:", s.r.Version())
+		s.ctxlog.WithFields(log.Fields{
+			"proposed-ringver": newRing.Version(),
+			"ringver":          s.r.Version(),
+			"err":              err,
+		}).Warning("failed to apply ring change")
 		return &pb.NodeConfig{}, fmt.Errorf("Unable to apply ring change during registration")
 	}
+	s.ctxlog.WithField("ringver", s.r.Version()).Info("updated ring")
 	s.managedNodes[n.ID()], err = NewManagedNode(&ManagedNodeOpts{Address: n.Address(s.cfg.CmdCtrlIndex)})
-	//just log the error, we'll keep retrying to connect
 	if err != nil {
-		log.Printf("Error setting up new managed node %s: %s", n.Address(0), err.Error())
+		s.ctxlog.WithFields(log.Fields{
+			"id":      n.ID(),
+			"address": n.Address(0),
+			"err":     err,
+		}).Warning("failed to add new managed node")
 	}
-	log.Printf("Added node %d ring version is now %d", n.ID(), s.r.Version())
+	s.ctxlog.WithField("id", n.ID()).Debug("added managed node")
 	return &pb.NodeConfig{Localid: n.ID(), Ring: *s.rb}, nil
 }

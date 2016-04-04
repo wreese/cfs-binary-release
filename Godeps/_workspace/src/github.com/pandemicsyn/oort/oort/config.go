@@ -90,7 +90,7 @@ func (o *Server) ObtainConfig() (err error) {
 		s := &srvconf.SRVLoader{
 			SyndicateURL: e.Get("SYNDICATE_OVERRIDE"),
 		}
-		s.Record, err = genServiceID(o.serviceName, "syndicate", "tcp")
+		s.Record, err = GenServiceID(o.serviceName, "syndicate", "tcp")
 		if err != nil {
 			if e.Get("SYNDICATE_OVERRIDE") == "" {
 				log.Println(err)
@@ -109,13 +109,13 @@ func (o *Server) ObtainConfig() (err error) {
 		if err != nil {
 			return fmt.Errorf("Error while loading ring for config get via srv lookup: %s", err)
 		}
-		err = ring.PersistRingOrBuilder(o.ring, nil, fmt.Sprintf("/etc/oort/%s/%d-oort.ring", o.serviceName, o.ring.Version()))
+		err = ring.PersistRingOrBuilder(o.ring, nil, fmt.Sprintf("%s/ring/%d-%s.ring", o.cwd, o.ring.Version(), o.serviceName))
 		if err != nil {
 			return err
 		}
 		o.localID = nc.Localid
 		o.ring.SetLocalNode(o.localID)
-		o.ringFile = fmt.Sprintf("/etc/oort/%s/%d-oort.ring", o.serviceName, o.ring.Version())
+		o.ringFile = fmt.Sprintf("%s/ring/%d-%s.ring", o.cwd, o.ring.Version(), o.serviceName)
 		err = o.loadCmdCtrlConfig()
 		if err != nil {
 			return err
@@ -142,10 +142,23 @@ func (o *Server) ObtainConfig() (err error) {
 	return nil
 }
 
-//TODO: need to remove the hack to add IAD3 identifier
-func genServiceID(service, name, proto string) (string, error) {
+//TODO: need to remove the hack to add IAD3 identifier -- What hack? Not sure
+// what this refers to.
+func GenServiceID(service, name, proto string) (string, error) {
 	h, _ := os.Hostname()
 	d := strings.SplitN(h, ".", 2)
+	// All-In-One defaults
+	if strings.HasSuffix(d[0], "-aio") {
+		// TODO: Not sure about name, proto -- are those ever *not* "syndicate"
+		// and "tcp"?
+		switch service {
+		case "value":
+			return h + ":8443", nil
+		case "group":
+			return h + ":8444", nil
+		}
+		panic("Unknown service " + service)
+	}
 	if len(d) != 2 {
 		return "", fmt.Errorf("Unable to determine FQDN, only got short name.")
 	}

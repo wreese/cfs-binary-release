@@ -11,10 +11,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"log"
 	"net"
 
 	"github.com/BurntSushi/toml"
+	log "github.com/Sirupsen/logrus"
 	pb "github.com/pandemicsyn/syndicate/api/proto"
 	"github.com/pandemicsyn/syndicate/syndicate"
 )
@@ -100,7 +100,7 @@ func (rs *RingSyndicates) launchSyndicates(k int) {
 
 func main() {
 	var err error
-	configFile := "/etc/oort/syndicate.toml"
+	configFile := "/etc/syndicate/syndicate.toml"
 	if os.Getenv("SYNDICATE_CONFIG") != "" {
 		configFile = os.Getenv("SYNDICATE_CONFIG")
 	}

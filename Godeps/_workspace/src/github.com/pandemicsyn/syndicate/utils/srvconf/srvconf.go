@@ -105,18 +105,16 @@ func (s *SRVLoader) getConfig() (*pb.NodeConfig, error) {
 
 func (s *SRVLoader) Load() (nodeconfig *pb.NodeConfig, err error) {
 	if s.SyndicateURL == "" {
-		serviceAddrs, err := lookup(s.Record)
-		if err != nil {
-			return &pb.NodeConfig{}, err
+		// Specific endpoint given
+		if _, _, err := net.SplitHostPort(s.Record); err == nil {
+			s.SyndicateURL = s.Record
+		} else {
+			serviceAddrs, err := lookup(s.Record)
+			if err != nil {
+				return &pb.NodeConfig{}, err
+			}
+			s.SyndicateURL = fmt.Sprintf("%s:%d", serviceAddrs[0].Target, serviceAddrs[0].Port)
 		}
-		s.SyndicateURL = fmt.Sprintf("%s:%d", serviceAddrs[0].Target, serviceAddrs[0].Port)
 	}
-	nodeconfig, err = s.getConfig()
-	if err != nil {
-		if err == ErrSRVLookupFailed {
-			return nodeconfig, err
-		}
-		return nodeconfig, err
-	}
-	return nodeconfig, nil
+	return s.getConfig()
 }

@@ -1,27 +1,42 @@
 package api
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/gholt/flog"
 	"github.com/gholt/ring"
 	"github.com/gholt/store"
+	"github.com/pandemicsyn/oort/oort"
+	synpb "github.com/pandemicsyn/syndicate/api/proto"
 	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 )
 
 type ReplGroupStore struct {
+	logError                   func(string, ...interface{})
 	logDebug                   func(string, ...interface{})
 	logDebugOn                 bool
 	addressIndex               int
 	valueCap                   int
 	concurrentRequestsPerStore int
-	streamsPerStore            int
 	failedConnectRetryDelay    int
+	grpcOpts                   []grpc.DialOption
 
-	ringLock sync.RWMutex
-	ring     ring.Ring
+	ringLock           sync.RWMutex
+	ring               ring.Ring
+	ringCachePath      string
+	ringServer         string
+	ringServerGRPCOpts []grpc.DialOption
+	ringServerExitChan chan struct{}
+	ringClientID       string
 
 	storesLock sync.RWMutex
 	stores     map[string]*replGroupStoreAndTicketChan
@@ -35,16 +50,36 @@ type replGroupStoreAndTicketChan struct {
 func NewReplGroupStore(c *ReplGroupStoreConfig) *ReplGroupStore {
 	cfg := resolveReplGroupStoreConfig(c)
 	rs := &ReplGroupStore{
+		logError:                   cfg.LogError,
 		logDebug:                   cfg.LogDebug,
 		logDebugOn:                 cfg.LogDebug != nil,
 		addressIndex:               cfg.AddressIndex,
 		valueCap:                   int(cfg.ValueCap),
 		concurrentRequestsPerStore: cfg.ConcurrentRequestsPerStore,
-		streamsPerStore:            cfg.StreamsPerStore,
 		failedConnectRetryDelay:    cfg.FailedConnectRetryDelay,
+		grpcOpts:                   cfg.GRPCOpts,
+		stores:                     make(map[string]*replGroupStoreAndTicketChan),
+		ringServer:                 cfg.RingServer,
+		ringServerGRPCOpts:         cfg.RingServerGRPCOpts,
+		ringCachePath:              cfg.RingCachePath,
+		ringClientID:               cfg.RingClientID,
+	}
+	if rs.logError == nil {
+		rs.logError = flog.Default.ErrorPrintf
 	}
 	if rs.logDebug == nil {
 		rs.logDebug = func(string, ...interface{}) {}
+	}
+	if rs.ringCachePath != "" {
+		if fp, err := os.Open(rs.ringCachePath); err != nil {
+			rs.logDebug("replGroupStore: error loading cached ring %q: %s", rs.ringCachePath, err)
+		} else if r, err := ring.LoadRing(fp); err != nil {
+			fp.Close()
+			rs.logDebug("replGroupStore: error loading cached ring %q: %s", rs.ringCachePath, err)
+		} else {
+			fp.Close()
+			rs.ring = r
+		}
 	}
 	return rs
 }
@@ -57,9 +92,28 @@ func (rs *ReplGroupStore) Ring() ring.Ring {
 }
 
 func (rs *ReplGroupStore) SetRing(r ring.Ring) {
+	if r == nil {
+		return
+	}
 	rs.ringLock.Lock()
+	if rs.ringCachePath != "" {
+		dir, name := path.Split(rs.ringCachePath)
+		fp, err := ioutil.TempFile(dir, name)
+		if err != nil {
+			rs.logDebug("replGroupStore: error caching ring %q: %s", rs.ringCachePath, err)
+		} else if err := r.Persist(fp); err != nil {
+			fp.Close()
+			os.Remove(fp.Name())
+			rs.logDebug("replGroupStore: error caching ring %q: %s", rs.ringCachePath, err)
+		} else {
+			fp.Close()
+			if err := os.Rename(fp.Name(), rs.ringCachePath); err != nil {
+				os.Remove(fp.Name())
+				rs.logDebug("replGroupStore: error caching ring %q: %s", rs.ringCachePath, err)
+			}
+		}
+	}
 	rs.ring = r
-	rs.ringLock.Unlock()
 	var currentAddrs map[string]struct{}
 	if r != nil {
 		nodes := r.Nodes()
@@ -90,6 +144,7 @@ func (rs *ReplGroupStore) SetRing(r ring.Ring) {
 			}
 		}
 	}
+	rs.ringLock.Unlock()
 }
 
 func (rs *ReplGroupStore) storesFor(ctx context.Context, keyA uint64) ([]*replGroupStoreAndTicketChan, error) {
@@ -142,7 +197,7 @@ func (rs *ReplGroupStore) storesFor(ctx context.Context, keyA uint64) ([]*replGr
 						tc <- struct{}{}
 					}
 					ss[i] = &replGroupStoreAndTicketChan{ticketChan: tc}
-					ss[i].store, err = NewGroupStore(as[i], rs.streamsPerStore)
+					ss[i].store, err = NewGroupStore(as[i], rs.concurrentRequestsPerStore, rs.grpcOpts...)
 					if err != nil {
 						ss[i].store = errorGroupStore(fmt.Sprintf("could not create store for %s: %s", as[i], err))
 						// Launch goroutine to clear out the error store after
@@ -174,11 +229,151 @@ func (rs *ReplGroupStore) storesFor(ctx context.Context, keyA uint64) ([]*replGr
 	return ss, nil
 }
 
+func (rs *ReplGroupStore) ringServerConnector(exitChan chan struct{}) {
+	sleeperTicks := 2
+	sleeperTicker := time.NewTicker(time.Second)
+	sleeper := func() {
+		for i := sleeperTicks; i > 0; i-- {
+			select {
+			case <-exitChan:
+				break
+			case <-sleeperTicker.C:
+			}
+		}
+		if sleeperTicks < 60 {
+			sleeperTicks *= 2
+		}
+	}
+	for {
+		select {
+		case <-exitChan:
+			break
+		default:
+		}
+		ringServer := rs.ringServer
+		if ringServer == "" {
+			var err error
+			ringServer, err = oort.GenServiceID("group", "syndicate", "tcp")
+			if err != nil {
+				rs.logError("replGroupStore: error resolving ring service: %s", err)
+				sleeper()
+				continue
+			}
+		}
+		conn, err := grpc.Dial(ringServer, rs.ringServerGRPCOpts...)
+		if err != nil {
+			rs.logError("replGroupStore: error connecting to ring service %s: %s", ringServer, err)
+			sleeper()
+			continue
+		}
+		stream, err := synpb.NewSyndicateClient(conn).GetRingStream(context.Background(), &synpb.SubscriberID{Id: rs.ringClientID})
+		if err != nil {
+			rs.logError("replGroupStore: error creating stream with ring service %s: %s", ringServer, err)
+			sleeper()
+			continue
+		}
+		connDoneChan := make(chan struct{})
+		somethingICanTakeAnAddressOf := int32(0)
+		activity := &somethingICanTakeAnAddressOf
+		// This goroutine will detect when the exitChan is closed so it can
+		// close the conn so that the blocking stream.Recv will get an error
+		// and everything will unwind properly.
+		// However, if the conn errors out on its own and exitChan isn't
+		// closed, we're going to loop back around and try a new conn, but we
+		// need to clear out this goroutine, which is what the connDoneChan is
+		// for.
+		// One last thing is that if nothing happens for fifteen minutes, we
+		// can assume the conn has gone stale and close it, causing a loop
+		// around to try a new conn.
+		// It would be so much easier if Recv could use a timeout Context...
+		go func(c *grpc.ClientConn, a *int32, cdc chan struct{}) {
+			for {
+				select {
+				case <-exitChan:
+				case <-cdc:
+				case <-time.After(15 * time.Minute):
+					// I'm comfortable with time.After here since it's just
+					// once per fifteen minutes or new conn.
+					v := atomic.LoadInt32(a)
+					if v != 0 {
+						atomic.AddInt32(a, -v)
+						continue
+					}
+				}
+				break
+			}
+			c.Close()
+		}(conn, activity, connDoneChan)
+		for {
+			select {
+			case <-exitChan:
+				break
+			default:
+			}
+			res, err := stream.Recv()
+			if err != nil {
+				rs.logDebug("replGroupStore: error with stream to ring service %s: %s", ringServer, err)
+				break
+			}
+			atomic.AddInt32(activity, 1)
+			if res != nil {
+				if r, err := ring.LoadRing(bytes.NewBuffer(res.Ring)); err != nil {
+					rs.logDebug("replGroupStore: error with ring received from stream to ring service %s: %s", ringServer, err)
+				} else {
+					// This will cache the ring if ringCachePath is not empty.
+					rs.SetRing(r)
+					// Resets the exponential sleeper since we had success.
+					sleeperTicks = 2
+					rs.logDebug("replGroupStore: got new ring from stream to ring service %s: %d", ringServer, res.Version)
+				}
+			}
+		}
+		close(connDoneChan)
+		sleeper()
+	}
+}
+
+// Startup is not required to use the ReplGroupStore; it will automatically
+// connect to backend stores as needed. However, if you'd like to use the ring
+// service to receive ring updates and have the ReplGroupStore automatically
+// update itself accordingly, Startup will launch a connector to that service.
+// Otherwise, you will need to call SetRing yourself to inform the
+// ReplGroupStore of which backends to connect to.
 func (rs *ReplGroupStore) Startup(ctx context.Context) error {
+	rs.ringLock.Lock()
+	if rs.ringServerExitChan == nil {
+		rs.ringServerExitChan = make(chan struct{})
+		go rs.ringServerConnector(rs.ringServerExitChan)
+	}
+	rs.ringLock.Unlock()
 	return nil
 }
 
+// Shutdown will close all connections to backend stores and shutdown any
+// running ring service connector. Note that the ReplGroupStore can still be
+// used after Shutdown, it will just start reconnecting to backends again. To
+// relaunch the ring service connector, you will need to call Startup.
 func (rs *ReplGroupStore) Shutdown(ctx context.Context) error {
+	rs.ringLock.Lock()
+	if rs.ringServerExitChan != nil {
+		close(rs.ringServerExitChan)
+		rs.ringServerExitChan = nil
+	}
+	rs.storesLock.Lock()
+	for addr, stc := range rs.stores {
+		if err := stc.store.Shutdown(ctx); err != nil {
+			rs.logDebug("replGroupStore: error during shutdown of store %s: %s", addr, err)
+		}
+		delete(rs.stores, addr)
+		select {
+		case <-ctx.Done():
+			rs.storesLock.Unlock()
+			return ctx.Err()
+		default:
+		}
+	}
+	rs.storesLock.Unlock()
+	rs.ringLock.Unlock()
 	return nil
 }
 
@@ -240,10 +435,12 @@ func (rs *ReplGroupStore) Lookup(ctx context.Context, keyA, keyB uint64, childKe
 	var errs ReplGroupStoreErrorSlice
 	for _ = range stores {
 		ret := <-ec
-		if ret.timestampMicro > timestampMicro {
+		if ret.timestampMicro > timestampMicro || timestampMicro == 0 {
 			timestampMicro = ret.timestampMicro
 			length = ret.length
-			notFound = store.IsNotFound(ret.err)
+			if ret.err != nil {
+				notFound = store.IsNotFound(ret.err.Err())
+			}
 		}
 		if ret.err != nil {
 			errs = append(errs, ret.err)
@@ -261,6 +458,9 @@ func (rs *ReplGroupStore) Lookup(ctx context.Context, keyA, keyB uint64, childKe
 			rs.logDebug("replGroupStore: error during lookup: %s", err)
 		}
 		errs = nil
+	}
+	if errs == nil {
+		return timestampMicro, length, nil
 	}
 	return timestampMicro, length, errs
 }
@@ -299,10 +499,12 @@ func (rs *ReplGroupStore) Read(ctx context.Context, keyA uint64, keyB uint64, ch
 	var errs ReplGroupStoreErrorSlice
 	for _ = range stores {
 		ret := <-ec
-		if ret.timestampMicro > timestampMicro {
+		if ret.timestampMicro > timestampMicro || timestampMicro == 0 {
 			timestampMicro = ret.timestampMicro
 			rvalue = ret.value
-			notFound = store.IsNotFound(ret.err)
+			if ret.err != nil {
+				notFound = store.IsNotFound(ret.err.Err())
+			}
 		}
 		if ret.err != nil {
 			errs = append(errs, ret.err)
@@ -323,6 +525,9 @@ func (rs *ReplGroupStore) Read(ctx context.Context, keyA uint64, keyB uint64, ch
 			rs.logDebug("replGroupStore: error during read: %s", err)
 		}
 		errs = nil
+	}
+	if errs == nil {
+		return timestampMicro, rvalue, nil
 	}
 	return timestampMicro, rvalue, errs
 }
@@ -373,6 +578,9 @@ func (rs *ReplGroupStore) Write(ctx context.Context, keyA uint64, keyB uint64, c
 		}
 		errs = nil
 	}
+	if errs == nil {
+		return oldTimestampMicro, nil
+	}
 	return oldTimestampMicro, errs
 }
 
@@ -418,6 +626,9 @@ func (rs *ReplGroupStore) Delete(ctx context.Context, keyA uint64, keyB uint64, 
 			rs.logDebug("replGroupStore: error during delete: %s", err)
 		}
 		errs = nil
+	}
+	if errs == nil {
+		return oldTimestampMicro, nil
 	}
 	return oldTimestampMicro, errs
 }
@@ -537,14 +748,14 @@ type ReplGroupStoreErrorNotFound ReplGroupStoreErrorSlice
 
 func (e ReplGroupStoreErrorNotFound) Error() string {
 	if len(e) <= 0 {
-		return "unknown error"
+		return "not found"
 	} else if len(e) == 1 {
 		return e[0].Error()
 	}
 	return fmt.Sprintf("%d errors, first is: %s", len(e), e[0])
 }
 
-func (e ReplGroupStoreErrorNotFound) ErrorNotFound() string {
+func (e ReplGroupStoreErrorNotFound) ErrNotFound() string {
 	return e.Error()
 }
 
