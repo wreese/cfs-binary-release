@@ -1,6 +1,7 @@
 {
 	"ImportPath": "github.com/getcfs/cfs-binary-release",
 	"GoVersion": "go1.6",
+	"GodepVersion": "v61",
 	"Packages": [
 		"./..."
 	],
@@ -35,6 +36,11 @@
 			"ImportPath": "github.com/cloudfoundry/gosigar",
 			"Comment": "scotty_09012012-27-g3ed7c74",
 			"Rev": "3ed7c74352dae6dc00bdc8c74045375352e3ec05"
+		},
+		{
+			"ImportPath": "github.com/codegangsta/cli",
+			"Comment": "1.2.0-237-g71f57d3",
+			"Rev": "71f57d300dd6a780ac1856c005c4b518cfd498ec"
 		},
 		{
 			"ImportPath": "github.com/coreos/go-systemd/activation",
@@ -120,6 +126,10 @@
 			"Rev": "8d92cf5fc15a4382f8964b08e1f42a75c0591aa3"
 		},
 		{
+			"ImportPath": "github.com/letterj/oohhc/proto/account",
+			"Rev": "28dcd05e8dbc55c061860e293f35f425acaafaeb"
+		},
+		{
 			"ImportPath": "github.com/opencontainers/runc/libcontainer/user",
 			"Comment": "v0.0.8-57-g930dbb3",
 			"Rev": "930dbb38a2a1b312e211f0bfdd03051d3731e2d6"
@@ -198,6 +208,11 @@
 			"ImportPath": "github.com/russross/blackfriday",
 			"Comment": "v1.4-23-gb43df97",
 			"Rev": "b43df972fb5fdf3af8d2e90f38a69d374fe26dd0"
+		},
+		{
+			"ImportPath": "github.com/satori/go.uuid",
+			"Comment": "v1.0.0",
+			"Rev": "f9ab0dce87d815821e221626b772e3475a0d2749"
 		},
 		{
 			"ImportPath": "github.com/shirou/gopsutil/disk",
