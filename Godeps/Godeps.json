@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/getcfs/cfs-binary-release",
 	"GoVersion": "go1.6",
-	"GodepVersion": "v61",
+	"GodepVersion": "v62",
 	"Packages": [
 		"./..."
 	],
@@ -127,6 +127,10 @@
 		},
 		{
 			"ImportPath": "github.com/letterj/oohhc/proto/account",
+			"Rev": "28dcd05e8dbc55c061860e293f35f425acaafaeb"
+		},
+		{
+			"ImportPath": "github.com/letterj/oohhc/proto/filesystem",
 			"Rev": "28dcd05e8dbc55c061860e293f35f425acaafaeb"
 		},
 		{
