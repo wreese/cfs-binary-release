@@ -43,7 +43,7 @@ func GetHardwareProfile() (*pb.HardwareProfile, error) {
 	if err != nil {
 		return &pb.HardwareProfile{}, err
 	}
-	d, err := disk.DiskPartitions(true)
+	d, err := disk.Partitions(true)
 	if err != nil {
 		return &pb.HardwareProfile{}, err
 	}
@@ -54,7 +54,7 @@ func GetHardwareProfile() (*pb.HardwareProfile, error) {
 		Memfree:  v.Free,
 	}
 	for k := range d {
-		usage, err := disk.DiskUsage(d[k].Mountpoint)
+		usage, err := disk.Usage(d[k].Mountpoint)
 		if err != nil {
 			continue
 		}
