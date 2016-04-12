@@ -34,6 +34,6 @@ deployment:
     commands:
         - utils/ghr -t $GITHUB_TOKEN -u getcfs --replace --prerelease `cat VERSION` $BUILDPATH
   production:
-    branch: production
+    branch: prod
     commands:
         - utils/ghr -t $GITHUB_TOKEN -u getcfs --replace `cat VERSION` $BUILDPATH
