@@ -21,6 +21,7 @@ func (s *Server) addRingSubscriber(id string) chan *pb.Ring {
 		s.ctxlog.WithField("id", id).Debug("ring subscriber entry already existed, closed origin chan")
 	}
 	s.ringSubs.subs[id] = make(chan *pb.Ring, 1)
+	s.metrics.subscriberNodes.Inc()
 	return s.ringSubs.subs[id]
 }
 
@@ -33,6 +34,7 @@ func (s *Server) removeRingSubscriber(id string) error {
 	}
 	close(c)
 	delete(s.ringSubs.subs, id)
+	s.metrics.subscriberNodes.Dec()
 	return nil
 }
 

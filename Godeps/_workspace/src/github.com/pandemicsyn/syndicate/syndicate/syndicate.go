@@ -12,6 +12,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/gholt/ring"
 	pb "github.com/pandemicsyn/syndicate/api/proto"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 )
 
@@ -64,12 +65,35 @@ func parseSlaveAddrs(slaveAddrs []string) []*RingSlave {
 	return slaves
 }
 
+type syndicateMetrics struct {
+	managedNodes    prometheus.Gauge
+	subscriberNodes prometheus.Gauge
+}
+
+func metricsInit(servicename string) *syndicateMetrics {
+	m := syndicateMetrics{}
+	m.managedNodes = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:        "managed_nodes",
+		Help:        "Current number of nodes managed.",
+		ConstLabels: prometheus.Labels{"instance": servicename},
+	})
+	m.subscriberNodes = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:        "subscriber_nodes",
+		Help:        "Current number of unmanaged nodes subscribed for ring changes.",
+		ConstLabels: prometheus.Labels{"instance": servicename},
+	})
+	prometheus.Register(m.managedNodes)
+	prometheus.Register(m.subscriberNodes)
+	return &m
+}
+
 //Server is the syndicate manager instance
 type Server struct {
 	sync.RWMutex
 	servicename    string
 	cfg            *Config
 	ctxlog         *log.Entry
+	metrics        *syndicateMetrics
 	r              ring.Ring
 	b              *ring.Builder
 	slaves         []*RingSlave
@@ -123,6 +147,8 @@ func NewServer(cfg *Config, servicename string, opts ...MockOpt) (*Server, error
 		log.SetLevel(log.DebugLevel)
 	}
 	s.ctxlog = log.WithField("service", s.servicename)
+	s.metrics = metricsInit(s.servicename)
+
 	s.parseConfig()
 
 	for _, opt := range opts {
@@ -162,6 +188,7 @@ func NewServer(cfg *Config, servicename string, opts ...MockOpt) (*Server, error
 	}
 	s.tierlimits = cfg.TierFilter
 	s.managedNodes = bootstrapManagedNodes(s.r, s.cfg.CmdCtrlPort, s.ctxlog)
+	s.metrics.managedNodes.Set(float64(len(s.managedNodes)))
 	s.changeChan = make(chan *changeMsg, 1)
 	s.subsChangeChan = make(chan *changeMsg, 1)
 	go s.RingChangeManager()
@@ -933,6 +960,7 @@ func (s *Server) RegisterNode(c context.Context, r *pb.RegisterRequest) (*pb.Nod
 			"err":     err,
 		}).Warning("failed to add new managed node")
 	}
+	s.metrics.managedNodes.Inc()
 	s.ctxlog.WithField("id", n.ID()).Debug("added managed node")
 	return &pb.NodeConfig{Localid: n.ID(), Ring: *s.rb}, nil
 }

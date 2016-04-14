@@ -252,6 +252,7 @@ func (s *Server) removeManagedNodes(nodes []uint64) {
 				s.ctxlog.WithFields(log.Fields{"nodeid": nodeid, "err": err}).Warning("error disconnecting node")
 			}
 			delete(s.managedNodes, nodeid)
+			s.metrics.managedNodes.Dec()
 		}
 	}
 	return
