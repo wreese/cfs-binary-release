@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	pb "github.com/pandemicsyn/syndicate/api/proto"
 	"github.com/pandemicsyn/syndicate/syndicate"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -142,6 +144,9 @@ func main() {
 	for k, _ := range rs.Syndics {
 		go rs.launchSyndicates(k)
 	}
+	//now that syndics are up and running launch global metrics endpoint
+	http.Handle("/metrics", prometheus.Handler())
+	go http.ListenAndServe(":9100", nil)
 	ch := make(chan os.Signal)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	for {
