@@ -269,7 +269,7 @@ message InodeEntry {
     uint64 blocks             = 10;
     uint64 blockSize          = 11;
     uint64 lastBlock          = 12;
-    uint64 fsId               = 13;
+    bytes  fsId               = 13;
 }
 
 // Tombstone
@@ -277,7 +277,7 @@ message InodeEntry {
 message Tombstone {
     int64  dtime  = 1; // Timestamp micro the delete request was made
     int64  qtime  = 2; // Timestamp micro of the most recent queing of delete
-    uint64 fsId   = 3; // Needed to get the block IDs
+    bytes  fsId   = 3; // Needed to get the block IDs
     uint64 inode  = 4;
     uint64 blocks = 5; // Blocks from the original object that need to be deleted
 }

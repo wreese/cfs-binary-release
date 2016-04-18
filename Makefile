@@ -29,10 +29,31 @@ build:
 	mkdir -p $(BUILDPATH)
 	godep go build -i -v -o build/oort-cli github.com/getcfs/cfs-binary-release/mains/oort-cli
 	godep go build -i -v -o build/oort-bench github.com/getcfs/cfs-binary-release/mains/oort-bench
-	godep go build -i -v -o build/oort-valued github.com/getcfs/cfs-binary-release/mains/oort-valued
 	godep go build -i -v -o build/oort-groupd github.com/getcfs/cfs-binary-release/mains/oort-groupd
-	godep go build -i -v -o build/synd github.com/getcfs/cfs-binary-release/mains/synd
-	godep go build -i -v -o build/syndicate-client github.com/getcfs/cfs-binary-release/mains/syndicate-client
+	godep go build -i -v -o build/oort-valued --ldflags " \
+			-X main.ringVersion=$(shell git -C $$GOPATH/src/github.com/gholt/ring rev-parse HEAD) \
+			-X main.oortVersion=$(shell git rev-parse HEAD) \
+			-X main.valuestoreVersion=$(shell git -C $$GOPATH/src/github.com/gholt/store rev-parse HEAD) \
+			-X main.cmdctrlVersion=$(shell git -C $$GOPATH/src/github.com/pandemicsyn/cmdctrl rev-parse HEAD) \
+			-X main.goVersion=$(shell go version | sed -e 's/ /-/g') \
+			-X main.buildDate=$(shell date -u +%Y-%m-%d.%H:%M:%S)" github.com/getcfs/cfs-binary-release/mains/oort-valued
+	godep go build -i -v -o build/oort-groupd --ldflags " \
+			-X main.ringVersion=$(shell git -C $$GOPATH/src/github.com/gholt/ring rev-parse HEAD) \
+			-X main.oortVersion=$(shell git rev-parse HEAD) \
+			-X main.valuestoreVersion=$(shell git -C $$GOPATH/src/github.com/gholt/store rev-parse HEAD) \
+			-X main.cmdctrlVersion=$(shell git -C $$GOPATH/src/github.com/pandemicsyn/cmdctrl rev-parse HEAD) \
+			-X main.goVersion=$(shell go version | sed -e 's/ /-/g') \
+			-X main.buildDate=$(shell date -u +%Y-%m-%d.%H:%M:%S)" github.com/getcfs/cfs-binary-release/mains/oort-groupd
+	godep go build -i -v -o build/synd --ldflags " \
+			-X main.ringVersion=$(shell git -C $$GOPATH/src/github.com/gholt/ring rev-parse HEAD) \
+			-X main.syndVersion=$(shell git rev-parse HEAD) \
+			-X main.goVersion=$(shell go version | sed -e 's/ /-/g') \
+			-X main.buildDate=$(shell date -u +%Y-%m-%d.%H:%M:%S)" github.com/getcfs/cfs-binary-release/mains/synd
+	godep go build -i -v -o build/syndicate-client --ldflags " \
+			-X main.ringVersion=$(shell git -C $$GOPATH/src/github.com/gholt/ring rev-parse HEAD) \
+			-X main.syndVersion=$(shell git rev-parse HEAD) \
+			-X main.goVersion=$(shell go version | sed -e 's/ /-/g') \
+			-X main.buildDate=$(shell date -u +%Y-%m-%d.%H:%M:%S)" github.com/getcfs/cfs-binary-release/mains/syndicate-client
 	godep go build -i -v -o build/cfsdvp github.com/getcfs/cfs-binary-release/mains/cfsdvp
 	godep go build -i -v -o build/cfs github.com/getcfs/cfs-binary-release/mains/cfs
 	godep go build -i -v -o build/formicd github.com/getcfs/cfs-binary-release/mains/formicd

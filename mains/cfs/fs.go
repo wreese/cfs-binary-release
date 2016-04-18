@@ -103,11 +103,12 @@ func (f *fs) handle(r fuse.Request) {
 		f.handleStatfs(r)
 
 		/*
+			case *fuse.InitRequest:
+				f.handleInit(r)
+
 			case *fuse.MknodRequest:
 				f.handleMknod(r)
 
-			case *fuse.InitRequest:
-				f.handleInit(r)
 
 			case *fuse.LinkRequest:
 				f.handleLink(r)
@@ -443,10 +444,12 @@ func (f *fs) handleMknod(r *fuse.MknodRequest) {
 	r.RespondError(fuse.EIO)
 }
 
+/*
 func (f *fs) handleInit(r *fuse.InitRequest) {
 	log.Println("Inside handleInit")
 	r.RespondError(fuse.ENOSYS)
 }
+*/
 
 func (f *fs) handleStatfs(r *fuse.StatfsRequest) {
 	log.Println("Inside handleStatfs")
