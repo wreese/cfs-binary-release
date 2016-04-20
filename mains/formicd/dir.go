@@ -141,7 +141,7 @@ func NewInMemDS() *InMemDS {
 		Uid:    1001, // TODO: need to config default user/group id
 		Gid:    1001,
 	}
-	ds.nodes[murmur3.Sum64(GetID(1, 1, n.attr.Inode, 0))] = n
+	ds.nodes[murmur3.Sum64(GetID([]byte("1"), n.attr.Inode, 0))] = n
 	return ds
 }
 

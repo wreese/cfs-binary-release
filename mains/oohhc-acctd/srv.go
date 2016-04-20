@@ -8,57 +8,29 @@ import (
 
 	"github.com/gholt/brimtime"
 	"github.com/gholt/store"
-	"github.com/pandemicsyn/oort/api"
 	"github.com/spaolacci/murmur3"
 	"golang.org/x/net/context"
-
-	"google.golang.org/grpc"
 )
 
 // AccountWS the strurcture carrying all the extra stuff
 type AccountWS struct {
 	superKey string
-	gaddr    string
-	gopts    []grpc.DialOption
-	gconn    *grpc.ClientConn
 	gstore   store.GroupStore
 }
 
 // NewAccountWS function used to create a new admin grpc web service
-func NewAccountWS(superkey string, gaddr string, insecureSkipVerify bool, grpcOpts ...grpc.DialOption) (*AccountWS, error) {
-	// TODO: This all eventually needs to replaced with group rings
-	var err error
+func NewAccountWS(key string, store store.GroupStore) (*AccountWS, error) {
 	a := &AccountWS{
-		superKey: superkey,
-		gaddr:    gaddr,
-		gopts:    grpcOpts,
-	}
-	//a.gopts = append(a.gopts, grpc.WithTransportCredentials(a.gcreds))
-	a.gstore, err = api.NewGroupStore(a.gaddr, 10, a.gopts...)
-	if err != nil {
-		log.Fatalf("Unable to setup group store: %s", err.Error())
-		return nil, err
+		superKey: key,
+		gstore:   store,
 	}
 	log.Println("creating a new group store...")
 	return a, nil
 }
 
 // grpc Group Store functions
-// getGroupClient ...
-func (aws *AccountWS) getGClient() {
-	var err error
-	log.Println("reconnecting to a new group store...")
-	aws.gstore, err = api.NewGroupStore(aws.gaddr, 10, aws.gopts...)
-	if err != nil {
-		log.Fatalf("Unable to setup group store: %s", err.Error())
-	}
-}
-
 // lookupAccount ...
 func (aws *AccountWS) lookupGStore(g string) (string, error) {
-	if aws.gconn == nil {
-		aws.getGClient()
-	}
 	log.Println("Starting a Group Store Lookup")
 	keyA, keyB := murmur3.Sum128([]byte(g))
 	items, err := aws.gstore.LookupGroup(context.Background(), keyA, keyB)
@@ -87,9 +59,6 @@ func (aws *AccountWS) lookupGStore(g string) (string, error) {
 
 // lookupAccount ...
 func (aws *AccountWS) writeGStore(g string, m string, p []byte) (string, error) {
-	if aws.gconn == nil {
-		aws.getGClient()
-	}
 	// prepare groupVal and memberVal
 	log.Println("Starting a Write to the Group Store")
 	keyA, keyB := murmur3.Sum128([]byte(g))
@@ -105,9 +74,6 @@ func (aws *AccountWS) writeGStore(g string, m string, p []byte) (string, error) 
 
 // lookupAccount ...
 func (aws *AccountWS) getGStore(g string, m string) (string, error) {
-	if aws.gconn == nil {
-		aws.getGClient()
-	}
 	// TODO:
 	log.Println("Starting a Read from the Group Store")
 	keyA, keyB := murmur3.Sum128([]byte(g))
