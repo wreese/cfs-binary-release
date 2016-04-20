@@ -18,6 +18,7 @@ import (
 	mb "github.com/letterj/oohhc/proto/filesystem"
 
 	"bazil.org/fuse"
+	"github.com/satori/go.uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -169,7 +170,6 @@ func main() {
 					fmt.Printf("Invalid region %s", u.Scheme)
 					os.Exit(1)
 				}
-				fmt.Println(u.Scheme)
 				acctNum = u.Host
 				if u.Path != "" {
 					fmt.Println("Invalid url scheme")
@@ -314,7 +314,7 @@ func main() {
 				}
 				acctNum = u.Host
 				fsNum = u.Path[1:]
-				if c.String("name") != "" && !validAcctName(c.String("name")) {
+				if c.String("name") != "" {
 					fmt.Printf("Invalid File System String: %q\n", c.String("name"))
 					os.Exit(1)
 				}
@@ -512,18 +512,19 @@ func main() {
 					fmt.Printf("File System id is required")
 					os.Exit(1)
 				}
-				fsnum := u.Host
+				fsnum, err := uuid.FromString(u.Host)
+				if err != nil {
+					fmt.Print("File System id is not valid: ", err)
+				}
 				mountpoint := c.Args().Get(1)
 				// check mountpoint exists
 				if _, ferr := os.Stat(mountpoint); os.IsNotExist(ferr) {
 					log.Printf("Mount point %s does not exist\n\n", mountpoint)
 					os.Exit(1)
 				}
-				fmt.Println("run fusermountPath")
 				fusermountPath()
 				// process file system options
 				clargs := getArgs(c.String("o"))
-				fmt.Println(clargs)
 				// crapy debug log handling :)
 				if debug, ok := clargs["debug"]; ok {
 					if debug == "false" {
@@ -535,7 +536,6 @@ func main() {
 					log.SetOutput(ioutil.Discard)
 				}
 				// Setup grpc
-				fmt.Println("Setting up grpc")
 				var opts []grpc.DialOption
 				creds := credentials.NewTLS(&tls.Config{
 					InsecureSkipVerify: true,
@@ -547,7 +547,6 @@ func main() {
 				}
 				defer conn.Close()
 				// Work with fuse
-				fmt.Println("Work with fuse")
 				cfs, err := fuse.Mount(
 					mountpoint,
 					fuse.FSName("cfs"),
@@ -563,19 +562,12 @@ func main() {
 				defer cfs.Close()
 
 				rpc := newrpc(conn)
-				fs := newfs(cfs, rpc)
+				fs := newfs(cfs, rpc, fsnum.String())
+				err = fs.InitFs()
+				if err != nil {
+					log.Fatal(err)
+				}
 				srv := newserver(fs)
-
-				// Verify fsnum and ip
-				// 1. Get local IP Address
-				// 2. Check for valid filesystem
-				// 		query group store
-				//			"/fs"    "[fsnum]"
-				// 3. Check for valid ip
-				//		query group store
-				//			"/fs/[fsnum]/addr"		"[ipaddress]"
-
-				fmt.Printf("Verify that file system %s with ip %s \n", fsnum, "127.0.0.1")
 
 				if err := srv.serve(); err != nil {
 					log.Fatal(err)
@@ -636,12 +628,6 @@ func fusermountPath() {
 		// fusermount is in /bin
 		os.Setenv("PATH", "/bin")
 	}
-}
-
-// Validate the account string passed in from the command line
-func validAcctName(a string) bool {
-	//TODO: Determine what needs to be done to validate
-	return true
 }
 
 // setupWS ...

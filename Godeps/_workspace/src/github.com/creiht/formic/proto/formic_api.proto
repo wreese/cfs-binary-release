@@ -27,6 +27,7 @@ service Api {
     rpc Removexattr(RemovexattrRequest) returns (RemovexattrResponse) {}
     rpc Rename(RenameRequest) returns (RenameResponse) {}
     rpc Statfs(StatfsRequest) returns (StatfsResponse) {}
+    rpc InitFs(InitFsRequest) returns (InitFsResponse) {}
 }
 
 // DirEnt is a directory entry
@@ -249,6 +250,10 @@ message StatfsResponse {
     uint32 namelen = 7;
     uint32 frsize  = 8;
 }
+
+// InitFs
+message InitFsRequest {}
+message InitFsResponse {}
 
 // Since this data can sit around for a while, we track a version number of the api so that it 
 // is easier to explicitly check what version we are using and act accordingly

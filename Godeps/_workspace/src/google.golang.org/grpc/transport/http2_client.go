@@ -202,13 +202,17 @@ func newHTTP2Client(addr string, opts *ConnectOptions) (_ ClientTransport, err e
 }
 
 func (t *http2Client) newStream(ctx context.Context, callHdr *CallHdr) *Stream {
+	fc := &inFlow{
+		limit: initialWindowSize,
+		conn:  t.fc,
+	}
 	// TODO(zhaoq): Handle uint32 overflow of Stream.id.
 	s := &Stream{
 		id:            t.nextID,
 		method:        callHdr.Method,
 		sendCompress:  callHdr.SendCompress,
 		buf:           newRecvBuffer(),
-		fc:            &inFlow{limit: initialWindowSize},
+		fc:            fc,
 		sendQuotaPool: newQuotaPool(int(t.streamSendQuota)),
 		headerChan:    make(chan struct{}),
 	}
@@ -232,9 +236,9 @@ func (t *http2Client) NewStream(ctx context.Context, callHdr *CallHdr) (_ *Strea
 	var timeout time.Duration
 	if dl, ok := ctx.Deadline(); ok {
 		timeout = dl.Sub(time.Now())
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, ContextErr(err)
+		if timeout <= 0 {
+			return nil, ContextErr(context.DeadlineExceeded)
+		}
 	}
 	pr := &peer.Peer{
 		Addr: t.conn.RemoteAddr(),
@@ -400,10 +404,8 @@ func (t *http2Client) CloseStream(s *Stream, err error) {
 	// other goroutines.
 	s.cancel()
 	s.mu.Lock()
-	if q := s.fc.resetPendingData(); q > 0 {
-		if n := t.fc.onRead(q); n > 0 {
-			t.controlBuf.put(&windowUpdate{0, n})
-		}
+	if q := s.fc.restoreConn(); q > 0 {
+		t.controlBuf.put(&windowUpdate{0, q})
 	}
 	if s.state == streamDone {
 		s.mu.Unlock()
@@ -503,10 +505,6 @@ func (t *http2Client) Write(s *Stream, data []byte, opts *Options) error {
 		t.framer.adjustNumWriters(1)
 		// Got some quota. Try to acquire writing privilege on the transport.
 		if _, err := wait(s.ctx, t.shutdownChan, t.writableChan); err != nil {
-			if _, ok := err.(StreamError); ok {
-				// Return the connection quota back.
-				t.sendQuotaPool.add(len(p))
-			}
 			if t.framer.adjustNumWriters(-1) == 0 {
 				// This writer is the last one in this batch and has the
 				// responsibility to flush the buffered frames. It queues
@@ -515,14 +513,6 @@ func (t *http2Client) Write(s *Stream, data []byte, opts *Options) error {
 				t.controlBuf.put(&flushIO{})
 			}
 			return err
-		}
-		if s.ctx.Err() != nil {
-			t.sendQuotaPool.add(len(p))
-			if t.framer.adjustNumWriters(-1) == 0 {
-				t.controlBuf.put(&flushIO{})
-			}
-			t.writableChan <- 0
-			return ContextErr(s.ctx.Err())
 		}
 		if r.Len() == 0 && t.framer.adjustNumWriters(0) == 1 {
 			// Do a force flush iff this is last frame for the entire gRPC message
@@ -570,39 +560,33 @@ func (t *http2Client) getStream(f http2.Frame) (*Stream, bool) {
 // Window updates will deliver to the controller for sending when
 // the cumulative quota exceeds the corresponding threshold.
 func (t *http2Client) updateWindow(s *Stream, n uint32) {
-	if w := t.fc.onRead(n); w > 0 {
-		t.controlBuf.put(&windowUpdate{0, w})
+	swu, cwu := s.fc.onRead(n)
+	if swu > 0 {
+		t.controlBuf.put(&windowUpdate{s.id, swu})
 	}
-	if w := s.fc.onRead(n); w > 0 {
-		t.controlBuf.put(&windowUpdate{s.id, w})
+	if cwu > 0 {
+		t.controlBuf.put(&windowUpdate{0, cwu})
 	}
 }
 
 func (t *http2Client) handleData(f *http2.DataFrame) {
-	size := len(f.Data())
-	if err := t.fc.onData(uint32(size)); err != nil {
-		t.notifyError(ConnectionErrorf("%v", err))
-		return
-	}
 	// Select the right stream to dispatch.
 	s, ok := t.getStream(f)
 	if !ok {
-		if w := t.fc.onRead(uint32(size)); w > 0 {
-			t.controlBuf.put(&windowUpdate{0, w})
-		}
 		return
 	}
+	size := len(f.Data())
 	if size > 0 {
-		s.mu.Lock()
-		if s.state == streamDone {
-			s.mu.Unlock()
-			// The stream has been closed. Release the corresponding quota.
-			if w := t.fc.onRead(uint32(size)); w > 0 {
-				t.controlBuf.put(&windowUpdate{0, w})
-			}
-			return
-		}
 		if err := s.fc.onData(uint32(size)); err != nil {
+			if _, ok := err.(ConnectionError); ok {
+				t.notifyError(err)
+				return
+			}
+			s.mu.Lock()
+			if s.state == streamDone {
+				s.mu.Unlock()
+				return
+			}
 			s.state = streamDone
 			s.statusCode = codes.Internal
 			s.statusDesc = err.Error()
@@ -611,7 +595,6 @@ func (t *http2Client) handleData(f *http2.DataFrame) {
 			t.controlBuf.put(&resetStream{s.id, http2.ErrCodeFlowControl})
 			return
 		}
-		s.mu.Unlock()
 		// TODO(bradfitz, zhaoq): A copy is required here because there is no
 		// guarantee f.Data() is consumed before the arrival of next frame.
 		// Can this copy be eliminated?

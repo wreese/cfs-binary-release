@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path"
@@ -24,7 +25,23 @@ func FatalIf(err error, msg string) {
 	}
 }
 
+var (
+	printVersionInfo = flag.Bool("version", false, "print version/build info")
+)
+
+var formicdVersion string
+var buildDate string
+var goVersion string
+
 func main() {
+	flag.Parse()
+	if *printVersionInfo {
+		fmt.Println("formicd version:", formicdVersion)
+		fmt.Println("build date:", buildDate)
+		fmt.Println("go version:", goVersion)
+		return
+	}
+
 	cfg := resolveConfig(nil)
 
 	var opts []grpc.ServerOption
