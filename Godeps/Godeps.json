@@ -179,6 +179,7 @@
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api",
+<<<<<<< HEAD
 			"Comment": "qa-0.0.1-135-g63ec4ce",
 			"Rev": "63ec4ce5618c7abf74ede6999cfad64b3935283a"
 		},
@@ -206,6 +207,35 @@
 			"ImportPath": "github.com/pandemicsyn/oort/oortstore",
 			"Comment": "qa-0.0.1-135-g63ec4ce",
 			"Rev": "63ec4ce5618c7abf74ede6999cfad64b3935283a"
+=======
+			"Comment": "qa-0.0.1-136-g93416dc",
+			"Rev": "93416dc901ad9ef325eb2abddab02ee0f0981ca2"
+		},
+		{
+			"ImportPath": "github.com/pandemicsyn/oort/api/groupproto",
+			"Comment": "qa-0.0.1-136-g93416dc",
+			"Rev": "93416dc901ad9ef325eb2abddab02ee0f0981ca2"
+		},
+		{
+			"ImportPath": "github.com/pandemicsyn/oort/api/proto",
+			"Comment": "qa-0.0.1-136-g93416dc",
+			"Rev": "93416dc901ad9ef325eb2abddab02ee0f0981ca2"
+		},
+		{
+			"ImportPath": "github.com/pandemicsyn/oort/api/valueproto",
+			"Comment": "qa-0.0.1-136-g93416dc",
+			"Rev": "93416dc901ad9ef325eb2abddab02ee0f0981ca2"
+		},
+		{
+			"ImportPath": "github.com/pandemicsyn/oort/oort",
+			"Comment": "qa-0.0.1-136-g93416dc",
+			"Rev": "93416dc901ad9ef325eb2abddab02ee0f0981ca2"
+		},
+		{
+			"ImportPath": "github.com/pandemicsyn/oort/oortstore",
+			"Comment": "qa-0.0.1-136-g93416dc",
+			"Rev": "93416dc901ad9ef325eb2abddab02ee0f0981ca2"
+>>>>>>> master
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/syndicate/api/proto",
