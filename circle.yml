@@ -6,7 +6,7 @@ machine:
   environment:
     GOROOT: ${HOME}/go1.6.1/go
     GO15VENDOREXPERIMENT: 0
-    GOPATH: ${HOME}/cfs-binary-release
+    GOPATH: ${HOME}/go
     PATH: $GOPATH/bin:${GOROOT}/bin:${PATH}
     PPATH: ${HOME}/go/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME
     BUILDPATH: $PPATH/build/
