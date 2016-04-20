@@ -184,19 +184,22 @@ func NewOortFS(vstore store.ValueStore, gstore store.GroupStore) (*OortFS, error
 
 func (o *OortFS) validateIP(ctx context.Context) (bool, error) {
 	// TODO: Add caching of validation
-	fsid, err := GetFsId(ctx)
-	if err != nil {
-		return false, err
-	}
 	p, ok := peer.FromContext(ctx)
 	if !ok {
 		return false, errors.New("Couldn't get client IP")
+	}
+	if p.Addr.String() == "internal" {
+		// This is an internal call, so we can skip
+		return true, nil
 	}
 	ip, _, err := net.SplitHostPort(p.Addr.String())
 	if err != nil {
 		return false, err
 	}
-
+	fsid, err := GetFsId(ctx)
+	if err != nil {
+		return false, err
+	}
 	_, err = o.comms.ReadGroupItem(ctx, []byte(fmt.Sprintf("/fs/%s/addr", fsid.String())), []byte(ip))
 	if store.IsNotFound(err) {
 		log.Println("Invalid IP: ", ip)
