@@ -73,14 +73,14 @@ type syndicateMetrics struct {
 func metricsInit(servicename string) *syndicateMetrics {
 	m := syndicateMetrics{}
 	m.managedNodes = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "managed_nodes",
+		Name:        "ManagedNodes",
 		Help:        "Current number of nodes managed.",
-		ConstLabels: prometheus.Labels{"instance": servicename},
+		ConstLabels: prometheus.Labels{"servicename": servicename},
 	})
 	m.subscriberNodes = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "subscriber_nodes",
+		Name:        "SubscriberNodes",
 		Help:        "Current number of unmanaged nodes subscribed for ring changes.",
-		ConstLabels: prometheus.Labels{"instance": servicename},
+		ConstLabels: prometheus.Labels{"servicename": servicename},
 	})
 	prometheus.Register(m.managedNodes)
 	prometheus.Register(m.subscriberNodes)
