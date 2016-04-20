@@ -191,18 +191,18 @@
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/syndicate/api/proto",
-			"Comment": "stable-0.0.3-64-g8a6aff5",
-			"Rev": "8a6aff5d35b07ca8738bfe9c25f05e912e454330"
+			"Comment": "stable-0.0.3-65-gf12ff9c",
+			"Rev": "f12ff9c4eec368d55b082b9f76856c3053c98a4d"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/syndicate/syndicate",
-			"Comment": "stable-0.0.3-64-g8a6aff5",
-			"Rev": "8a6aff5d35b07ca8738bfe9c25f05e912e454330"
+			"Comment": "stable-0.0.3-65-gf12ff9c",
+			"Rev": "f12ff9c4eec368d55b082b9f76856c3053c98a4d"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/syndicate/utils/srvconf",
-			"Comment": "stable-0.0.3-64-g8a6aff5",
-			"Rev": "8a6aff5d35b07ca8738bfe9c25f05e912e454330"
+			"Comment": "stable-0.0.3-65-gf12ff9c",
+			"Rev": "f12ff9c4eec368d55b082b9f76856c3053c98a4d"
 		},
 		{
 			"ImportPath": "github.com/peterh/liner",
