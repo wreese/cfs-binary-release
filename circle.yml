@@ -6,7 +6,7 @@ machine:
   environment:
     GOROOT: ${HOME}/go1.6.1/go
     GO15VENDOREXPERIMENT: 0
-    GOPATH: ${HOME}/go
+    GOPATH: ${HOME}/$CIRCLE_PROJECT_REPONAME/go
     PATH: $GOPATH/bin:${GOROOT}/bin:${PATH}
     PPATH: ${HOME}/go/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME
     BUILDPATH: $PPATH/build/
@@ -32,7 +32,7 @@ deployment:
   master:
     branch: master
     commands:
-        - utils/ghr -t $GITHUB_TOKEN -u getcfs --replace --prerelease pre-`cat VERSION` $BUILDPATH
+        - utils/ghr -t $GITHUB_TOKEN -u getcfs --replace --prerelease `cat VERSION`-pre $BUILDPATH
   production:
     branch: prod
     commands:
