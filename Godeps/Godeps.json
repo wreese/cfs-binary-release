@@ -34,6 +34,10 @@
 			"Rev": "f3e2bae1e0cb5aef83e319133eabfee30013a4a5"
 		},
 		{
+			"ImportPath": "github.com/beevik/ntp",
+			"Rev": "283ed9d548825a1dae0994311560e8dbf8efac68"
+		},
+		{
 			"ImportPath": "github.com/beorn7/perks/quantile",
 			"Rev": "3ac7bf7a47d159a033b107610db8a1b6575507a4"
 		},
@@ -49,6 +53,16 @@
 		},
 		{
 			"ImportPath": "github.com/coreos/go-systemd/activation",
+			"Comment": "v5",
+			"Rev": "7b2428fec40033549c68f54e26e89e7ca9a9ce31"
+		},
+		{
+			"ImportPath": "github.com/coreos/go-systemd/dbus",
+			"Comment": "v5",
+			"Rev": "7b2428fec40033549c68f54e26e89e7ca9a9ce31"
+		},
+		{
+			"ImportPath": "github.com/coreos/go-systemd/util",
 			"Comment": "v5",
 			"Rev": "7b2428fec40033549c68f54e26e89e7ca9a9ce31"
 		},
@@ -112,6 +126,11 @@
 			"Rev": "572eabb84c424e76a0d39d31510dd7dfd62f70b2"
 		},
 		{
+			"ImportPath": "github.com/godbus/dbus",
+			"Comment": "v4.0.0",
+			"Rev": "5f6efc7ef2759c81b7ba876593971bfce311eab3"
+		},
+		{
 			"ImportPath": "github.com/gogo/protobuf/gogoproto",
 			"Comment": "v0.2-11-g4f262e4",
 			"Rev": "4f262e4b0f3a6cea646e15798109335551e21756"
@@ -129,6 +148,10 @@
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
 			"Rev": "2ebff28ac76fb19e2d25e5ddd4885708dfdd5611"
+		},
+		{
+			"ImportPath": "github.com/kolo/xmlrpc",
+			"Rev": "0826b98aaa29c0766956cb40d45cf7482a597671"
 		},
 		{
 			"ImportPath": "github.com/letterj/oohhc/proto/account",
@@ -158,6 +181,11 @@
 		{
 			"ImportPath": "github.com/pandemicsyn/ftls",
 			"Rev": "c5f5495c19107b8da3319d24e20d30fdf08cf06a"
+		},
+		{
+			"ImportPath": "github.com/pandemicsyn/node_exporter/collector",
+			"Comment": "0.12.0rc3-21-gb27c33c",
+			"Rev": "b27c33c2fb743b8b8f841b25e73ae3c111407c69"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api",
@@ -205,6 +233,11 @@
 			"Rev": "f12ff9c4eec368d55b082b9f76856c3053c98a4d"
 		},
 		{
+			"ImportPath": "github.com/pandemicsyn/syndicate/utils/sysmetrics",
+			"Comment": "stable-0.0.3-65-gf12ff9c",
+			"Rev": "f12ff9c4eec368d55b082b9f76856c3053c98a4d"
+		},
+		{
 			"ImportPath": "github.com/peterh/liner",
 			"Rev": "49ca65981c3cd7db64145977af1d186e9d317afa"
 		},
@@ -232,8 +265,17 @@
 			"Rev": "40456948a47496dc22168e6af39297a2f8fbf38c"
 		},
 		{
+			"ImportPath": "github.com/prometheus/common/log",
+			"Rev": "40456948a47496dc22168e6af39297a2f8fbf38c"
+		},
+		{
 			"ImportPath": "github.com/prometheus/common/model",
 			"Rev": "40456948a47496dc22168e6af39297a2f8fbf38c"
+		},
+		{
+			"ImportPath": "github.com/prometheus/node_exporter/collector/ganglia",
+			"Comment": "0.12.0rc3-20-gd98335c",
+			"Rev": "d98335cbf0ffe904d568604d2aa06f7316fa2aac"
 		},
 		{
 			"ImportPath": "github.com/prometheus/procfs",
@@ -271,6 +313,10 @@
 		{
 			"ImportPath": "github.com/shurcooL/sanitized_anchor_name",
 			"Rev": "10ef21a441db47d8b13ebcc5fd2310f636973c77"
+		},
+		{
+			"ImportPath": "github.com/soundcloud/go-runit/runit",
+			"Rev": "06ad41a06c4a586951fb8040a697ecd39729640b"
 		},
 		{
 			"ImportPath": "github.com/spaolacci/murmur3",
