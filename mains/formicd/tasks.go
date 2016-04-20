@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 
+	"google.golang.org/grpc/peer"
+
 	"github.com/gholt/store"
 
 	"golang.org/x/net/context"
@@ -25,13 +27,25 @@ func newDeletinator(in chan *DeleteItem, fs FileService) *Deletinator {
 	}
 }
 
+type localAddr struct{}
+
+func (l localAddr) String() string {
+	return "internal"
+}
+func (l localAddr) Network() string {
+	return "internal"
+}
+
 func (d *Deletinator) run() {
 	// TODO: Parallelize this thing?
 	for {
 		todelete := <-d.in
 		log.Println("Deleting: ", todelete)
 		// TODO: Need better context
-		ctx := context.Background()
+		p := &peer.Peer{
+			Addr: localAddr{},
+		}
+		ctx := peer.NewContext(context.Background(), p)
 		// Get the dir entry info
 		dirent, err := d.fs.GetDirent(ctx, todelete.parent, todelete.name)
 		if store.IsNotFound(err) {
@@ -43,6 +57,7 @@ func (d *Deletinator) run() {
 		if err != nil {
 			// TODO Better error handling?
 			// re-q the id, to try again later
+			log.Print("Delete error getting dirent: ", err)
 			d.in <- todelete
 			continue
 		}

@@ -68,11 +68,11 @@
 		},
 		{
 			"ImportPath": "github.com/creiht/formic/flother",
-			"Rev": "b9f8f1e3bb1947bee50bccc2fea16acb46796a97"
+			"Rev": "b1b7dbc8213ef343c38b11dcbd978ab1b6dea5c0"
 		},
 		{
 			"ImportPath": "github.com/creiht/formic/proto",
-			"Rev": "b9f8f1e3bb1947bee50bccc2fea16acb46796a97"
+			"Rev": "b1b7dbc8213ef343c38b11dcbd978ab1b6dea5c0"
 		},
 		{
 			"ImportPath": "github.com/docker/go-connections/sockets",
