@@ -59,10 +59,6 @@ func DefaultClientFTLSConf(CertFile, KeyFile, CAFile string) *Config {
 
 // NewClientTLSConfig constructs a client tls.Conf from provide ftls Config.
 func NewClientTLSConfig(c *Config) (*tls.Config, error) {
-	cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
-	if err != nil {
-		return &tls.Config{}, fmt.Errorf("Unable to load cert %s %s: %s", c.CertFile, c.KeyFile, err.Error())
-	}
 	clientCertPool := x509.NewCertPool()
 	if c.CAFile != "" {
 		clientCACert, err := ioutil.ReadFile(c.CAFile)
@@ -72,6 +68,10 @@ func NewClientTLSConfig(c *Config) (*tls.Config, error) {
 		clientCertPool.AppendCertsFromPEM(clientCACert)
 	}
 	if c.MutualTLS {
+		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+		if err != nil {
+			return &tls.Config{}, fmt.Errorf("Unable to load cert %s %s: %s", c.CertFile, c.KeyFile, err.Error())
+		}
 		tlsConf := &tls.Config{
 			Certificates: []tls.Certificate{cert},
 			RootCAs:      clientCertPool,
