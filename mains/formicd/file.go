@@ -767,15 +767,6 @@ func (o *OortFS) Rename(ctx context.Context, oldParent, newParent []byte, oldNam
 	if !v {
 		return nil, errors.New("Unknown or unauthorized FS use")
 	}
-	// Check if the new name already exists
-	id, err := o.comms.ReadGroupItem(ctx, newParent, []byte(newName))
-	if err != nil && !store.IsNotFound(err) {
-		// TODO: Needs beter error handling
-		return &pb.RenameResponse{}, err
-	}
-	if len(id) > 0 { // New name already exists
-		return &pb.RenameResponse{}, nil
-	}
 	// Get the ID from the group list
 	b, err := o.comms.ReadGroupItem(ctx, oldParent, []byte(oldName))
 	if store.IsNotFound(err) {
@@ -789,16 +780,19 @@ func (o *OortFS) Rename(ctx context.Context, oldParent, newParent []byte, oldNam
 	if err != nil {
 		return &pb.RenameResponse{}, err
 	}
-	// Delete old entry
-	err = o.comms.DeleteGroupItem(ctx, oldParent, []byte(oldName))
-	if err != nil {
-		return &pb.RenameResponse{}, err
-	}
+	// TODO: Handle orphaned data from overwrites
 	// Create new entry
 	d.Name = newName
 	b, err = proto.Marshal(d)
 	err = o.comms.WriteGroup(ctx, newParent, []byte(newName), b)
 	if err != nil {
+		return &pb.RenameResponse{}, err
+	}
+	// Delete old entry
+	err = o.comms.DeleteGroupItem(ctx, oldParent, []byte(oldName))
+	if err != nil {
+		// TODO: Handle errors
+		// If we fail here then we will have two entries
 		return &pb.RenameResponse{}, err
 	}
 	return &pb.RenameResponse{}, nil
