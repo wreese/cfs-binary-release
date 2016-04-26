@@ -691,6 +691,9 @@ func (o *OortFS) Setxattr(ctx context.Context, id []byte, name string, value []b
 	if err != nil {
 		return &pb.SetxattrResponse{}, err
 	}
+	if n.Xattr == nil {
+		n.Xattr = make(map[string][]byte)
+	}
 	n.Xattr[name] = value
 	b, err = proto.Marshal(n)
 	if err != nil {
