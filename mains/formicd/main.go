@@ -49,15 +49,39 @@ func main() {
 	FatalIf(err, "Couldn't load cert from file")
 	opts = []grpc.ServerOption{grpc.Creds(creds)}
 	s := grpc.NewServer(opts...)
-	copt, err := ftls.NewGRPCClientDialOpt(&ftls.Config{
+
+	var vcOpts []grpc.DialOption
+	vtlsConfig := &ftls.Config{
 		MutualTLS:          !cfg.skipMutualTLS,
 		InsecureSkipVerify: cfg.insecureSkipVerify,
 		CertFile:           path.Join(cfg.path, "client.crt"),
 		KeyFile:            path.Join(cfg.path, "client.key"),
 		CAFile:             path.Join(cfg.path, "ca.pem"),
+	}
+	vrOpts, err := ftls.NewGRPCClientDialOpt(&ftls.Config{
+		MutualTLS:          false,
+		InsecureSkipVerify: cfg.insecureSkipVerify,
+		CAFile:             path.Join(cfg.path, "ca.pem"),
 	})
 	if err != nil {
-		grpclog.Fatalln("Cannot setup tls config:", err)
+		grpclog.Fatalln("Cannot setup value store tls config for synd client:", err)
+	}
+
+	var gcOpts []grpc.DialOption
+	gtlsConfig := &ftls.Config{
+		MutualTLS:          !cfg.skipMutualTLS,
+		InsecureSkipVerify: cfg.insecureSkipVerify,
+		CertFile:           path.Join(cfg.path, "client.crt"),
+		KeyFile:            path.Join(cfg.path, "client.key"),
+		CAFile:             path.Join(cfg.path, "ca.pem"),
+	}
+	grOpts, err := ftls.NewGRPCClientDialOpt(&ftls.Config{
+		MutualTLS:          false,
+		InsecureSkipVerify: cfg.insecureSkipVerify,
+		CAFile:             path.Join(cfg.path, "ca.pem"),
+	})
+	if err != nil {
+		grpclog.Fatalln("Cannot setup group store tls config for synd client:", err)
 	}
 
 	clientID, _ := os.Hostname()
@@ -67,26 +91,28 @@ func main() {
 
 	vstore := api.NewReplValueStore(&api.ReplValueStoreConfig{
 		AddressIndex:       2,
-		GRPCOpts:           []grpc.DialOption{copt},
+		StoreFTLSConfig:    vtlsConfig,
+		GRPCOpts:           vcOpts,
 		RingServer:         cfg.oortValueSyndicate,
 		RingCachePath:      path.Join(cfg.path, "ring/valuestore.ring"),
-		RingServerGRPCOpts: []grpc.DialOption{copt},
+		RingServerGRPCOpts: []grpc.DialOption{vrOpts},
 		RingClientID:       clientID,
 	})
-	if err := vstore.Startup(context.Background()); err != nil {
-		grpclog.Fatalln("Cannot start valuestore connector:", err)
+	if verr := vstore.Startup(context.Background()); verr != nil {
+		grpclog.Fatalln("Cannot start valuestore connector:", verr)
 	}
 
 	gstore := api.NewReplGroupStore(&api.ReplGroupStoreConfig{
 		AddressIndex:       2,
-		GRPCOpts:           []grpc.DialOption{copt},
+		StoreFTLSConfig:    gtlsConfig,
+		GRPCOpts:           gcOpts,
 		RingServer:         cfg.oortGroupSyndicate,
 		RingCachePath:      path.Join(cfg.path, "ring/groupstore.ring"),
-		RingServerGRPCOpts: []grpc.DialOption{copt},
+		RingServerGRPCOpts: []grpc.DialOption{grOpts},
 		RingClientID:       clientID,
 	})
-	if err := gstore.Startup(context.Background()); err != nil {
-		grpclog.Fatalln("Cannot start valuestore connector:", err)
+	if gerr := gstore.Startup(context.Background()); gerr != nil {
+		grpclog.Fatalln("Cannot start valuestore connector:", gerr)
 	}
 
 	fs, err := NewOortFS(vstore, gstore)

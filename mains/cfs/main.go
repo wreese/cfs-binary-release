@@ -119,7 +119,7 @@ func main() {
 				if u.Scheme == "aio" {
 					serverAddr = "127.0.0.1:8448"
 				} else if u.Scheme == "iad" {
-					serverAddr = "api.ea.iad3.rackfs.com:8443"
+					serverAddr = "api.ea.iad.rackfs.com:8448"
 				} else {
 					fmt.Printf("Invalid region %s", u.Scheme)
 					os.Exit(1)
@@ -165,7 +165,7 @@ func main() {
 				if u.Scheme == "aio" {
 					serverAddr = "127.0.0.1:8448"
 				} else if u.Scheme == "iad" {
-					serverAddr = "api.ea.iad3.rackfs.com:8443"
+					serverAddr = "api.ea.iad.rackfs.com:8448"
 				} else {
 					fmt.Printf("Invalid region %s", u.Scheme)
 					os.Exit(1)
@@ -212,7 +212,7 @@ func main() {
 				if u.Scheme == "aio" {
 					serverAddr = "127.0.0.1:8448"
 				} else if u.Scheme == "iad" {
-					serverAddr = "api.ea.iad3.rackfs.com:8443"
+					serverAddr = "api.ea.iad.rackfs.com:8448"
 				} else {
 					fmt.Printf("Invalid region %s", u.Scheme)
 					os.Exit(1)
@@ -255,7 +255,7 @@ func main() {
 				if u.Scheme == "aio" {
 					serverAddr = "127.0.0.1:8448"
 				} else if u.Scheme == "iad" {
-					serverAddr = "api.ea.iad3.rackfs.com:8443"
+					serverAddr = "api.ea.iad.rackfs.com:8448"
 				} else {
 					fmt.Printf("Invalid region %s", u.Scheme)
 					os.Exit(1)
@@ -307,7 +307,7 @@ func main() {
 				if u.Scheme == "aio" {
 					serverAddr = "127.0.0.1:8448"
 				} else if u.Scheme == "iad" {
-					serverAddr = "api.ea.iad3.rackfs.com:8443"
+					serverAddr = "api.ea.iad.rackfs.com:8448"
 				} else {
 					fmt.Printf("Invalid region %s", u.Scheme)
 					os.Exit(1)
@@ -367,7 +367,7 @@ func main() {
 				if u.Scheme == "aio" {
 					serverAddr = "127.0.0.1:8448"
 				} else if u.Scheme == "iad" {
-					serverAddr = "api.ea.iad3.rackfs.com:8443"
+					serverAddr = "api.ea.iad.rackfs.com:8448"
 				} else {
 					fmt.Printf("Invalid region %s", u.Scheme)
 					os.Exit(1)
@@ -418,7 +418,7 @@ func main() {
 				if u.Scheme == "aio" {
 					serverAddr = "127.0.0.1:8448"
 				} else if u.Scheme == "iad" {
-					serverAddr = "api.ea.iad3.rackfs.com:8443"
+					serverAddr = "api.ea.iad.rackfs.com:8448"
 				} else {
 					fmt.Printf("Invalid region %s", u.Scheme)
 					os.Exit(1)
@@ -503,7 +503,7 @@ func main() {
 				if u.Scheme == "aio" {
 					serverAddr = "127.0.0.1:8445"
 				} else if u.Scheme == "iad" {
-					serverAddr = "api.ea.iad3.rackfs.com:8443"
+					serverAddr = "api.ea.iad.rackfs.com:8445"
 				} else {
 					fmt.Printf("Invalid region %s", u.Scheme)
 					os.Exit(1)
