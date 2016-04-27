@@ -163,6 +163,7 @@ type OortFS struct {
 	hasher     func() hash.Hash32
 	comms      *StoreComms
 	deleteChan chan *DeleteItem
+	validIps   map[string]bool
 }
 
 func NewOortFS(vstore store.ValueStore, gstore store.GroupStore) (*OortFS, error) {
@@ -172,8 +173,9 @@ func NewOortFS(vstore store.ValueStore, gstore store.GroupStore) (*OortFS, error
 		return &OortFS{}, err
 	}
 	o := &OortFS{
-		hasher: crc32.NewIEEE,
-		comms:  comms,
+		hasher:   crc32.NewIEEE,
+		comms:    comms,
+		validIps: make(map[string]bool),
 	}
 	// TODO: How big should the chan be, or should we have another in memory queue that feeds the chan?
 	o.deleteChan = make(chan *DeleteItem, 1000)
@@ -196,6 +198,11 @@ func (o *OortFS) validateIP(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// First check the cache
+	valid, ok := o.validIps[ip]
+	if ok && valid {
+		return true, nil
+	}
 	fsid, err := GetFsId(ctx)
 	if err != nil {
 		return false, err
@@ -211,6 +218,8 @@ func (o *OortFS) validateIP(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
+	// Cache the valid ip
+	o.validIps[ip] = true
 	return true, nil
 }
 
