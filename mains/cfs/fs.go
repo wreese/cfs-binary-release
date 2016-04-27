@@ -213,6 +213,8 @@ func (f *fs) handleGetattr(r *fuse.GetattrRequest) {
 		log.Fatalf("GetAttr fail: %v", err)
 	}
 	copyAttr(&resp.Attr, a.Attr)
+	// TODO: should we make these configurable?
+	resp.Attr.Valid = 5 * time.Second
 
 	log.Println(resp)
 	r.Respond(resp)
@@ -237,6 +239,8 @@ func (f *fs) handleLookup(r *fuse.LookupRequest) {
 	}
 	resp.Node = fuse.NodeID(l.Attr.Inode)
 	copyAttr(&resp.Attr, l.Attr)
+	// TODO: should we make these configureable?
+	resp.Attr.Valid = 5 * time.Second
 	resp.EntryValid = 5 * time.Second
 
 	log.Println(resp)
@@ -260,6 +264,7 @@ func (f *fs) handleMkdir(r *fuse.MkdirRequest) {
 	}
 	resp.Node = fuse.NodeID(m.Attr.Inode)
 	copyAttr(&resp.Attr, m.Attr)
+	resp.Attr.Valid = 5 * time.Second
 	resp.EntryValid = 5 * time.Second
 
 	log.Println(resp)
@@ -363,8 +368,10 @@ func (f *fs) handleCreate(r *fuse.CreateRequest) {
 	resp.Node = fuse.NodeID(c.Attr.Inode)
 	copyAttr(&resp.Attr, c.Attr)
 	resp.EntryValid = 5 * time.Second
+	resp.Attr.Valid = 5 * time.Second
 	copyAttr(&resp.LookupResponse.Attr, c.Attr)
 	resp.LookupResponse.EntryValid = 5 * time.Second
+	resp.LookupResponse.Attr.Valid = 5 * time.Second
 	r.Respond(resp)
 }
 
@@ -402,6 +409,7 @@ func (f *fs) handleSetattr(r *fuse.SetattrRequest) {
 		log.Fatalf("Setattr failed: %v", err)
 	}
 	copyAttr(&resp.Attr, setAttrResp.Attr)
+	resp.Attr.Valid = 5 * time.Second
 	log.Println(resp)
 	r.Respond(resp)
 }
@@ -492,6 +500,7 @@ func (f *fs) handleSymlink(r *fuse.SymlinkRequest) {
 	}
 	resp.Node = fuse.NodeID(symlink.Attr.Inode)
 	copyAttr(&resp.Attr, symlink.Attr)
+	resp.Attr.Valid = 5 * time.Second
 	resp.EntryValid = 5 * time.Second
 	log.Println(resp)
 	r.Respond(resp)
@@ -516,6 +525,12 @@ func (f *fs) handleLink(r *fuse.LinkRequest) {
 func (f *fs) handleGetxattr(r *fuse.GetxattrRequest) {
 	log.Println("Inside handleGetxattr")
 	log.Println(r)
+	if r.Name == "security.capability" {
+		// Ignore this for now
+		// TODO: Figure out if we want to allow this or not
+		r.Respond(&fuse.GetxattrResponse{})
+		return
+	}
 	req := &pb.GetxattrRequest{
 		Inode:    uint64(r.Node),
 		Name:     r.Name,
