@@ -68,11 +68,11 @@
 		},
 		{
 			"ImportPath": "github.com/creiht/formic/flother",
-			"Rev": "433d530bd857ff6048d0599bb1f5c5d7b75e2ba7"
+			"Rev": "97a7b940b364b6d3121f63072c4da760a6b303d0"
 		},
 		{
 			"ImportPath": "github.com/creiht/formic/proto",
-			"Rev": "433d530bd857ff6048d0599bb1f5c5d7b75e2ba7"
+			"Rev": "97a7b940b364b6d3121f63072c4da760a6b303d0"
 		},
 		{
 			"ImportPath": "github.com/docker/go-connections/sockets",
@@ -179,33 +179,33 @@
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api",
-			"Comment": "qa-0.0.1-141-gcee65ea",
-			"Rev": "cee65ea6c0878c13438b2c3ec84e109477b7be8f"
+			"Comment": "qa-0.0.1-144-ged969cb",
+			"Rev": "ed969cb3ce1072aec35b3dfcb41d2c3732b434d1"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api/groupproto",
-			"Comment": "qa-0.0.1-141-gcee65ea",
-			"Rev": "cee65ea6c0878c13438b2c3ec84e109477b7be8f"
+			"Comment": "qa-0.0.1-144-ged969cb",
+			"Rev": "ed969cb3ce1072aec35b3dfcb41d2c3732b434d1"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api/proto",
-			"Comment": "qa-0.0.1-141-gcee65ea",
-			"Rev": "cee65ea6c0878c13438b2c3ec84e109477b7be8f"
+			"Comment": "qa-0.0.1-144-ged969cb",
+			"Rev": "ed969cb3ce1072aec35b3dfcb41d2c3732b434d1"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api/valueproto",
-			"Comment": "qa-0.0.1-141-gcee65ea",
-			"Rev": "cee65ea6c0878c13438b2c3ec84e109477b7be8f"
+			"Comment": "qa-0.0.1-144-ged969cb",
+			"Rev": "ed969cb3ce1072aec35b3dfcb41d2c3732b434d1"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/oort",
-			"Comment": "qa-0.0.1-141-gcee65ea",
-			"Rev": "cee65ea6c0878c13438b2c3ec84e109477b7be8f"
+			"Comment": "qa-0.0.1-144-ged969cb",
+			"Rev": "ed969cb3ce1072aec35b3dfcb41d2c3732b434d1"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/oortstore",
-			"Comment": "qa-0.0.1-141-gcee65ea",
-			"Rev": "cee65ea6c0878c13438b2c3ec84e109477b7be8f"
+			"Comment": "qa-0.0.1-144-ged969cb",
+			"Rev": "ed969cb3ce1072aec35b3dfcb41d2c3732b434d1"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/syndicate/api/proto",

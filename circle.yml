@@ -27,7 +27,9 @@ test:
   pre:
     - go version
   override:
+    - echo $GOPATH
     - GOOS=linux GOARCH=amd64 make build
+    - GOOS=darwin make darwin
 deployment:
   master:
     branch: master
