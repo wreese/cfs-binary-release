@@ -7,6 +7,7 @@ machine:
     - sudo rm -rf /usr/local/go
     - if [ ! -e go$GOVERSION.linux-amd64.tar.gz ]; then curl -o go$GOVERSION.linux-amd64.tar.gz https://storage.googleapis.com/golang/go$GOVERSION.linux-amd64.tar.gz; fi
     - sudo tar -C /usr/local -xzf go$GOVERSION.linux-amd64.tar.gz
+    - sudo go install runtime/internal/sys
     - go version
 dependencies:
   cache_directories:
