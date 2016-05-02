@@ -14,6 +14,12 @@ dependencies:
   pre:
     - go get github.com/tools/godep
     - go install github.com/tools/godep
+dependencies:
+  override:
+    - mkdir -p $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME
+    - ln -fs $HOME/$CIRCLE_PROJECT_REPONAME $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME
+    - |
+      echo 'export GOPATH=$GOPATH:$HOME/.go_project' >> ~/.circlerc
 general:
   artifacts:
     - "$BUILDPATH"
@@ -21,14 +27,14 @@ test:
   pre:
     - go version
   override:
-    - GOOS=linux GOARCH=amd64 make build
-    - GOOS=darwin make darwin
+    - cd $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME && GOOS=linux GOARCH=amd64 make build
+    - cd $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME && GOOS=darwin make darwin
 deployment:
   master:
     branch: master
     commands:
-        - utils/ghr -t $GITHUB_TOKEN -u getcfs --replace --prerelease pre-`cat VERSION` $BUILDPATH
+        - cd $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME && utils/ghr -t $GITHUB_TOKEN -u getcfs --replace --prerelease pre-`cat VERSION` $BUILDPATH
   production:
     branch: prod
     commands:
-        - utils/ghr -t $GITHUB_TOKEN -u getcfs `cat VERSION` $BUILDPATH
+        - cd $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME && utils/ghr -t $GITHUB_TOKEN -u getcfs `cat VERSION` $BUILDPATH
