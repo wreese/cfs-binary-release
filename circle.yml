@@ -1,13 +1,16 @@
 machine:
   environment:
-    GOVERSION: 1.6.1
+    GOVER: 1.6.1
+    GOROOT: ${HOME}/go$GOVER/go
     GO15VENDOREXPERIMENT: 0
     BUILDPATH: ${HOME}/${CIRCLE_PROJECT_REPONAME}/build
+    PATH: ${GOROOT}/bin:${PATH}
   post:
+    - sudo rm -rf $GOROOT
     - sudo rm -rf /usr/local/go
-    - if [ ! -e go$GOVERSION.linux-amd64.tar.gz ]; then curl -o go$GOVERSION.linux-amd64.tar.gz https://storage.googleapis.com/golang/go$GOVERSION.linux-amd64.tar.gz; fi
-    - sudo tar -C /usr/local -xzf go$GOVERSION.linux-amd64.tar.gz
-    - sudo go install runtime/internal/sys
+    - mkdir $GOROOT
+    - if [ ! -e go$GOVER.linux-amd64.tar.gz ]; then curl -o go$GOVER.linux-amd64.tar.gz https://storage.googleapis.com/golang/go$GOVER.linux-amd64.tar.gz; fi
+    - tar -C ~/go1.6.1 -xzf go$GOVER.linux-amd64.tar.gz
     - go version
 dependencies:
   cache_directories:
