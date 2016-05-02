@@ -8,7 +8,7 @@ machine:
   post:
     - sudo rm -rf $GOROOT
     - sudo rm -rf /usr/local/go
-    - mkdir $GOROOT
+    - mkdir -v -p $GOROOT
     - if [ ! -e go$GOVER.linux-amd64.tar.gz ]; then curl -o go$GOVER.linux-amd64.tar.gz https://storage.googleapis.com/golang/go$GOVER.linux-amd64.tar.gz; fi
     - tar -C ~/go1.6.1 -xzf go$GOVER.linux-amd64.tar.gz
     - go version
