@@ -1,9 +1,7 @@
 machine:
   environment:
     GOVERSION: 1.6.1
-    GOROOT: ${HOME}/go1.6.1/go
     GO15VENDOREXPERIMENT: 0
-    PATH: ${GOROOT}/bin:${PATH}
     BUILDPATH: ${HOME}/${CIRCLE_PROJECT_REPONAME}/build
   post:
     - sudo rm -rf /usr/local/go
