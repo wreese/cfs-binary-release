@@ -68,11 +68,11 @@
 		},
 		{
 			"ImportPath": "github.com/creiht/formic/flother",
-			"Rev": "97a7b940b364b6d3121f63072c4da760a6b303d0"
+			"Rev": "a14ab93a7f8ce18ddbf5a866c71d8b65fb08e21e"
 		},
 		{
 			"ImportPath": "github.com/creiht/formic/proto",
-			"Rev": "97a7b940b364b6d3121f63072c4da760a6b303d0"
+			"Rev": "a14ab93a7f8ce18ddbf5a866c71d8b65fb08e21e"
 		},
 		{
 			"ImportPath": "github.com/docker/go-connections/sockets",
@@ -189,23 +189,23 @@
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api/proto",
-			"Comment": "qa-0.0.1-144-ged969cb",
+			"Comment": "qa-0.0.1-143-ge860bc2",
 			"Rev": "ed969cb3ce1072aec35b3dfcb41d2c3732b434d1"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/api/valueproto",
-			"Comment": "qa-0.0.1-144-ged969cb",
-			"Rev": "ed969cb3ce1072aec35b3dfcb41d2c3732b434d1"
+			"Comment": "qa-0.0.1-143-ge860bc2",
+			"Rev": "e860bc23d7fdd76073bd392ae4d3002174aaa01d"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/oort",
-			"Comment": "qa-0.0.1-144-ged969cb",
-			"Rev": "ed969cb3ce1072aec35b3dfcb41d2c3732b434d1"
+			"Comment": "qa-0.0.1-143-ge860bc2",
+			"Rev": "e860bc23d7fdd76073bd392ae4d3002174aaa01d"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/oort/oortstore",
-			"Comment": "qa-0.0.1-144-ged969cb",
-			"Rev": "ed969cb3ce1072aec35b3dfcb41d2c3732b434d1"
+			"Comment": "qa-0.0.1-143-ge860bc2",
+			"Rev": "e860bc23d7fdd76073bd392ae4d3002174aaa01d"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/syndicate/api/proto",
