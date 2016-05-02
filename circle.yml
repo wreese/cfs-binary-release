@@ -18,8 +18,6 @@ dependencies:
   override:
     - go get github.com/tools/godep
     - go install github.com/tools/godep
-dependencies:
-  override:
     - mkdir -p $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME
     - ln -fs $HOME/$CIRCLE_PROJECT_REPONAME $HOME/.go_project/src/github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME
     - |
