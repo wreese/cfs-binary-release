@@ -27,7 +27,6 @@ build:
 	mkdir -p $(BUILDPATH)
 	godep go build -i -v -o build/oort-cli github.com/getcfs/cfs-binary-release/mains/oort-cli
 	godep go build -i -v -o build/oort-bench github.com/getcfs/cfs-binary-release/mains/oort-bench
-	godep go build -i -v -o build/oort-groupd github.com/getcfs/cfs-binary-release/mains/oort-groupd
 	godep go build -i -v -o build/oort-valued --ldflags " \
 			-X main.ringVersion=$(shell git -C $$GOPATH/src/github.com/gholt/ring rev-parse HEAD) \
 			-X main.oortVersion=$(VERSION) \
@@ -54,7 +53,6 @@ build:
 			-X main.buildDate=$(shell date -u +%Y-%m-%d.%H:%M:%S)" github.com/getcfs/cfs-binary-release/mains/syndicate-client
 	godep go build -i -v -o build/cfsdvp github.com/getcfs/cfs-binary-release/mains/cfsdvp
 	godep go build -i -v -o build/cfs github.com/getcfs/cfs-binary-release/mains/cfs
-	godep go build -i -v -o build/formicd github.com/getcfs/cfs-binary-release/mains/formicd
 	godep go build -i -v -o build/formicd --ldflags " \
 			-X main.formicdVersion=$(VERSION) \
 			-X main.goVersion=$(shell go version | sed -e 's/ /-/g') \
