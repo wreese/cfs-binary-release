@@ -76,27 +76,27 @@ release: install
 	ghr -t $(GITHUB_TOKEN) -u $(GITHUB_USER) --replace $(VERSION) $(BUILDPATH)
 
 oort-cli:
-	cp -av $(OGOPATH)/src/github.com/pandemicsyn/oort/oort-cli $(SRCPATH)
-	cp -av $(OGOPATH)/src/github.com/pandemicsyn/oort/oort-bench $(SRCPATH)
+	rsync --delete -av $(OGOPATH)/src/github.com/pandemicsyn/oort/oort-cli $(SRCPATH)
+	rsync --delete -av $(OGOPATH)/src/github.com/pandemicsyn/oort/oort-bench $(SRCPATH)
 
 oort-value:
-	cp -av $(OGOPATH)/src/github.com/pandemicsyn/oort/oort-valued $(SRCPATH)
+	rsync --delete -av $(OGOPATH)/src/github.com/pandemicsyn/oort/oort-valued $(SRCPATH)
 
 oort-group:
-	cp -av $(OGOPATH)/src/github.com/pandemicsyn/oort/oort-groupd $(SRCPATH)
+	rsync --delete -av $(OGOPATH)/src/github.com/pandemicsyn/oort/oort-groupd $(SRCPATH)
 
 syndicate:
-	cp -av $(OGOPATH)/src/github.com/pandemicsyn/syndicate/synd $(SRCPATH)
-	cp -av $(OGOPATH)/src/github.com/pandemicsyn/syndicate/syndicate-client $(SRCPATH)
+	rsync --delete -av $(OGOPATH)/src/github.com/pandemicsyn/syndicate/synd $(SRCPATH)
+	rsync --delete -av $(OGOPATH)/src/github.com/pandemicsyn/syndicate/syndicate-client $(SRCPATH)
 
 cfsdvp:
-	cp -av $(OGOPATH)/src/github.com/creiht/formic/cfsdvp $(SRCPATH)
+	rsync --delete -av $(OGOPATH)/src/github.com/creiht/formic/cfsdvp $(SRCPATH)
 
 cfs:
-	cp -av $(OGOPATH)/src/github.com/creiht/formic/cfs $(SRCPATH)
+	rsync --delete -av $(OGOPATH)/src/github.com/creiht/formic/cfs $(SRCPATH)
 
 formic:
-	cp -av $(OGOPATH)/src/github.com/creiht/formic/formicd $(SRCPATH)
+	rsync -a --delete $(OGOPATH)/src/github.com/creiht/formic/formicd $(SRCPATH)
 
 oohhc-filesysd:
-	cp -av $(OGOPATH)/src/github.com/letterj/oohhc/oohhc-filesysd $(SRCPATH)
+	rsync --delete -av $(OGOPATH)/src/github.com/letterj/oohhc/oohhc-filesysd $(SRCPATH)
