@@ -67,6 +67,10 @@
 			"Rev": "7b2428fec40033549c68f54e26e89e7ca9a9ce31"
 		},
 		{
+			"ImportPath": "github.com/creiht/formic",
+			"Rev": "a88366cdb510ea0f01a4db8e75e12494196b147a"
+		},
+		{
 			"ImportPath": "github.com/creiht/formic/flother",
 			"Rev": "a88366cdb510ea0f01a4db8e75e12494196b147a"
 		},
@@ -142,10 +146,6 @@
 		{
 			"ImportPath": "github.com/kolo/xmlrpc",
 			"Rev": "0826b98aaa29c0766956cb40d45cf7482a597671"
-		},
-		{
-			"ImportPath": "github.com/letterj/oohhc/proto/account",
-			"Rev": "3c60c64a542fb00b46987a7da2f74e31fa07f81b"
 		},
 		{
 			"ImportPath": "github.com/letterj/oohhc/proto/filesystem",
