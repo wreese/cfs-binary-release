@@ -12,21 +12,28 @@ import (
 
 	"github.com/gholt/brimtime"
 	"github.com/gholt/store"
+	"github.com/pandemicsyn/ftls"
 	"github.com/pandemicsyn/oort/api"
 	"github.com/peterh/liner"
 	"github.com/spaolacci/murmur3"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
-var vaddr = flag.String("vhost", "127.0.0.1:6379", "vstore addr")
-var gaddr = flag.String("ghost", "127.0.0.1:6380", "gstore addr")
+var vdirect = flag.String("vdirect", "", "Use specific direct value store ip:port instead of default SRV replicated value store")
+var gdirect = flag.String("gdirect", "", "Use specific direct group store ip:port instead of default SRV replicated group store")
 var groupmode = flag.Bool("g", false, "whether we're talking to a groupstore instance")
+var insecureSkipVerify = flag.Bool("insecure", false, "whether or not we should verify the cert")
+var mutualtls = flag.Bool("mutualtls", false, "whether or not the server expects mutual tls auth")
+var certfile = flag.String("cert", "client.crt", "cert file to use")
+var keyfile = flag.String("key", "client.key", "key file to use")
+var cafile = flag.String("ca", "ca.pem", "ca file to use")
 
 var (
 	prompt    = "> "
 	errprompt = "┻━┻ ︵ヽ(`Д´)ﾉ︵ ┻━┻> "
 	historyf  = filepath.Join(os.TempDir(), ".oort-cli-history")
-	cmdnames  = []string{"write", "write-hash", "read", "read-hash", "delete", "lookup", "lookup-group", "mode", "exit", "help"}
+	cmdnames  = []string{"write", "write-hash", "read", "read-hash", "read-group", "delete", "lookup", "lookup-group", "mode", "exit", "help"}
 )
 
 func lineCompleter(line string) (c []string) {
@@ -46,6 +53,7 @@ func (c *Client) printHelp() string {
 	write-hash <groupkey> <subkeyhasha> <subkeyhashb> <value>
 	read <groupkey> <subkey>
 	read-hash <groupkey> <subkeyhasha> <subkeyhashb>
+	read-group <groupkey> <subkey>
 	delete <groupkey> <subkey>
 	lookup <groupkey> <subkey>
 	lookup-group <key>
@@ -69,7 +77,10 @@ func (c *Client) printHelp() string {
 
 func (c *Client) parseValueCmd(line string) (string, error) {
 	if c.vconn == nil {
-		c.getValueClient()
+		err := c.getValueClient()
+		if err != nil {
+			return "", err
+		}
 	}
 	split := strings.SplitN(line, " ", 2)
 	cmd := split[0]
@@ -92,15 +103,15 @@ func (c *Client) parseValueCmd(line string) (string, error) {
 		keyA, keyB := murmur3.Sum128([]byte(sarg[0]))
 		value := []byte(sarg[1])
 		timestampMicro := brimtime.TimeToUnixMicro(time.Now())
-		oldTimestampMicro, err := c.vstore.Write(keyA, keyB, timestampMicro, value)
+		oldTimestampMicro, err := c.vstore.Write(context.Background(), keyA, keyB, timestampMicro, value)
 		if err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("WRITE TIMESTAMPMICRO: %d\nPREVIOUS TIMESTAMPMICRO: %d", timestampMicro, oldTimestampMicro), nil
 	case "read":
 		keyA, keyB := murmur3.Sum128([]byte(args))
-		timestampMicro, value, err := c.vstore.Read(keyA, keyB, nil)
-		if err == store.ErrNotFound {
+		timestampMicro, value, err := c.vstore.Read(context.Background(), keyA, keyB, nil)
+		if store.IsNotFound(err) {
 			return fmt.Sprintf("not found"), nil
 		} else if err != nil {
 			return "", err
@@ -109,15 +120,15 @@ func (c *Client) parseValueCmd(line string) (string, error) {
 	case "delete":
 		keyA, keyB := murmur3.Sum128([]byte(args))
 		timestampMicro := brimtime.TimeToUnixMicro(time.Now())
-		oldTimestampMicro, err := c.vstore.Delete(keyA, keyB, timestampMicro)
+		oldTimestampMicro, err := c.vstore.Delete(context.Background(), keyA, keyB, timestampMicro)
 		if err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("TIMESTAMPMICRO: %d\nOLD TIMESTAMPMICRO: %d", timestampMicro, oldTimestampMicro), nil
 	case "lookup":
 		keyA, keyB := murmur3.Sum128([]byte(args))
-		timestampMicro, length, err := c.vstore.Lookup(keyA, keyB)
-		if err == store.ErrNotFound {
+		timestampMicro, length, err := c.vstore.Lookup(context.Background(), keyA, keyB)
+		if store.IsNotFound(err) {
 			return fmt.Sprintf("not found"), nil
 		} else if err != nil {
 			return "", err
@@ -141,7 +152,10 @@ func (c *Client) parseValueCmd(line string) (string, error) {
 
 func (c *Client) parseGroupCmd(line string) (string, error) {
 	if c.gstore == nil {
-		c.getGroupClient()
+		err := c.getGroupClient()
+		if err != nil {
+			return "", err
+		}
 	}
 	split := strings.SplitN(line, " ", 2)
 	cmd := split[0]
@@ -164,7 +178,7 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		keyA, keyB := murmur3.Sum128([]byte(sarg[0]))
 		childKeyA, childKeyB := murmur3.Sum128([]byte(sarg[1]))
 		timestampMicro := brimtime.TimeToUnixMicro(time.Now())
-		oldTimestampMicro, err := c.gstore.Write(keyA, keyB, childKeyA, childKeyB, timestampMicro, []byte(sarg[2]))
+		oldTimestampMicro, err := c.gstore.Write(context.Background(), keyA, keyB, childKeyA, childKeyB, timestampMicro, []byte(sarg[2]))
 		if err != nil {
 			return "", err
 		}
@@ -184,7 +198,7 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 			return "", err
 		}
 		timestampMicro := brimtime.TimeToUnixMicro(time.Now())
-		oldTimestampMicro, err := c.gstore.Write(keyA, keyB, childKeyA, childKeyB, timestampMicro, []byte(sarg[3]))
+		oldTimestampMicro, err := c.gstore.Write(context.Background(), keyA, keyB, childKeyA, childKeyB, timestampMicro, []byte(sarg[3]))
 		if err != nil {
 			return "", err
 		}
@@ -196,8 +210,8 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		}
 		keyA, keyB := murmur3.Sum128([]byte(sarg[0]))
 		childKeyA, childKeyB := murmur3.Sum128([]byte(sarg[1]))
-		timestampMicro, value, err := c.gstore.Read(keyA, keyB, childKeyA, childKeyB, nil)
-		if err == store.ErrNotFound {
+		timestampMicro, value, err := c.gstore.Read(context.Background(), keyA, keyB, childKeyA, childKeyB, nil)
+		if store.IsNotFound(err) {
 			return fmt.Sprintf("not found"), nil
 		} else if err != nil {
 			return "", err
@@ -217,13 +231,26 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		timestampMicro, value, err := c.gstore.Read(keyA, keyB, childKeyA, childKeyB, nil)
-		if err == store.ErrNotFound {
+		timestampMicro, value, err := c.gstore.Read(context.Background(), keyA, keyB, childKeyA, childKeyB, nil)
+		if store.IsNotFound(err) {
 			return fmt.Sprintf("not found"), nil
 		} else if err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("TIMESTAMPMICRO: %d\nVALUE: %s", timestampMicro, value), nil
+	case "read-group":
+		KeyA, KeyB := murmur3.Sum128([]byte(args))
+		items, err := c.gstore.ReadGroup(context.Background(), KeyA, KeyB)
+		if store.IsNotFound(err) {
+			return fmt.Sprintf("not found"), nil
+		} else if err != nil {
+			return "", err
+		}
+		keys := make([]string, len(items))
+		for k, v := range items {
+			keys[k] = fmt.Sprintf("TIMESTAMPMICRO: %d [ %d | %d] VALUE: %s", v.TimestampMicro, v.ChildKeyA, v.ChildKeyB, v.Value)
+		}
+		return fmt.Sprintf(strings.Join(keys, "\n")), nil
 	case "delete":
 		sarg := strings.SplitN(args, " ", 2)
 		if len(sarg) < 2 {
@@ -232,7 +259,7 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		keyA, keyB := murmur3.Sum128([]byte(sarg[0]))
 		childKeyA, childKeyB := murmur3.Sum128([]byte(sarg[1]))
 		timestampMicro := brimtime.TimeToUnixMicro(time.Now())
-		oldTimestampMicro, err := c.gstore.Delete(keyA, keyB, childKeyA, childKeyB, timestampMicro)
+		oldTimestampMicro, err := c.gstore.Delete(context.Background(), keyA, keyB, childKeyA, childKeyB, timestampMicro)
 		if err != nil {
 			return "", err
 		}
@@ -244,8 +271,8 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		}
 		keyA, keyB := murmur3.Sum128([]byte(sarg[0]))
 		childKeyA, childKeyB := murmur3.Sum128([]byte(sarg[1]))
-		timestampMicro, length, err := c.gstore.Lookup(keyA, keyB, childKeyA, childKeyB)
-		if err == store.ErrNotFound {
+		timestampMicro, length, err := c.gstore.Lookup(context.Background(), keyA, keyB, childKeyA, childKeyB)
+		if store.IsNotFound(err) {
 			return fmt.Sprintf("not found"), nil
 		} else if err != nil {
 			return "", err
@@ -253,8 +280,8 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 		return fmt.Sprintf("TIMESTAMPMICRO: %d\nLENGTH: %d", timestampMicro, length), nil
 	case "lookup-group":
 		keyA, keyB := murmur3.Sum128([]byte(args))
-		items, err := c.gstore.LookupGroup(keyA, keyB)
-		if err == store.ErrNotFound {
+		items, err := c.gstore.LookupGroup(context.Background(), keyA, keyB)
+		if store.IsNotFound(err) {
 			return fmt.Sprintf("not found"), nil
 		} else if err != nil {
 			return "", err
@@ -280,29 +307,86 @@ func (c *Client) parseGroupCmd(line string) (string, error) {
 	return c.printHelp(), nil
 }
 
-func (c *Client) getValueClient() {
+func (c *Client) getValueClient() error {
 	var err error
-	c.vstore, err = api.NewValueStore(c.vaddr, 10, true)
-	if err != nil {
-		log.Fatalln("Cannot create value store:", err)
+	var opts []grpc.DialOption
+	tlsConfig := &ftls.Config{
+		MutualTLS:          *mutualtls,
+		InsecureSkipVerify: *insecureSkipVerify,
+		CertFile:           *certfile,
+		KeyFile:            *keyfile,
+		CAFile:             *cafile,
 	}
+	rOpts, err := ftls.NewGRPCClientDialOpt(&ftls.Config{
+		MutualTLS: false,
+		CAFile:    *cafile,
+	})
+	if err != nil {
+		return err
+	}
+	if c.vdirect != "" {
+		c.vstore, err = api.NewValueStore(c.vdirect, 10, tlsConfig, opts...)
+	} else {
+		c.vstore = api.NewReplValueStore(&api.ReplValueStoreConfig{
+			AddressIndex:       2,
+			StoreFTLSConfig:    tlsConfig,
+			GRPCOpts:           opts,
+			RingServerGRPCOpts: []grpc.DialOption{rOpts},
+		})
+		if err := c.vstore.Startup(context.Background()); err != nil {
+			return fmt.Errorf("Unable to start value store client: %s", err)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("Unable to setup value store: %s", err.Error())
+	}
+	return nil
 }
 
-func (c *Client) getGroupClient() {
+func (c *Client) getGroupClient() error {
 	var err error
-	c.gstore, err = api.NewGroupStore(c.gaddr, 10, true)
-	if err != nil {
-		log.Fatalln("Cannot create group store:", err)
+	var opts []grpc.DialOption
+	tlsConfig := &ftls.Config{
+		MutualTLS:          *mutualtls,
+		InsecureSkipVerify: *insecureSkipVerify,
+		CertFile:           *certfile,
+		KeyFile:            *keyfile,
+		CAFile:             *cafile,
 	}
+	rOpts, err := ftls.NewGRPCClientDialOpt(&ftls.Config{
+		MutualTLS: false,
+		CAFile:    *cafile,
+	})
+	if err != nil {
+		return err
+	}
+	if c.gdirect != "" {
+		c.gstore, err = api.NewGroupStore(c.gdirect, 10, tlsConfig, opts...)
+	} else {
+		c.gstore = api.NewReplGroupStore(&api.ReplGroupStoreConfig{
+			AddressIndex:       2,
+			StoreFTLSConfig:    tlsConfig,
+			GRPCOpts:           opts,
+			RingServerGRPCOpts: []grpc.DialOption{rOpts},
+		})
+		if err := c.gstore.Startup(context.Background()); err != nil {
+			return fmt.Errorf("Unable to start group store client: %s", err)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("Unable to setup group store: %s", err.Error())
+	}
+	return nil
 }
 
+// Client ...
 type Client struct {
-	vaddr  string
-	gaddr  string
-	gmode  bool
-	vconn  *grpc.ClientConn
-	vstore store.ValueStore
-	gstore api.GroupStore
+	vdirect string
+	gdirect string
+	gmode   bool
+	vconn   *grpc.ClientConn
+	vstore  store.ValueStore
+	gstore  store.GroupStore
 }
 
 func main() {
@@ -318,9 +402,9 @@ func main() {
 	}
 
 	client := Client{
-		vaddr: *vaddr,
-		gaddr: *gaddr,
-		gmode: *groupmode,
+		vdirect: *vdirect,
+		gdirect: *gdirect,
+		gmode:   *groupmode,
 	}
 	sm := "value"
 	if client.gmode {

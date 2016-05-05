@@ -27,6 +27,7 @@ service Api {
     rpc Removexattr(RemovexattrRequest) returns (RemovexattrResponse) {}
     rpc Rename(RenameRequest) returns (RenameResponse) {}
     rpc Statfs(StatfsRequest) returns (StatfsResponse) {}
+    rpc InitFs(InitFsRequest) returns (InitFsResponse) {}
 }
 
 // DirEnt is a directory entry
@@ -250,6 +251,10 @@ message StatfsResponse {
     uint32 frsize  = 8;
 }
 
+// InitFs
+message InitFsRequest {}
+message InitFsResponse {}
+
 // Since this data can sit around for a while, we track a version number of the api so that it 
 // is easier to explicitly check what version we are using and act accordingly
 
@@ -269,15 +274,27 @@ message InodeEntry {
     uint64 blocks             = 10;
     uint64 blockSize          = 11;
     uint64 lastBlock          = 12;
+    bytes  fsId               = 13;
 }
 
+// Tombstone
+// Stores information needed to keep track of deleted items
+message Tombstone {
+    int64  dtime  = 1; // Timestamp micro the delete request was made
+    int64  qtime  = 2; // Timestamp micro of the most recent queing of delete
+    bytes  fsId   = 3; // Needed to get the block IDs
+    uint64 inode  = 4;
+    uint64 blocks = 5; // Blocks from the original object that need to be deleted
+}
+    
 // DirEntry
 // This is used for the serialization of dir info in the group score
 // This is *not* used for api calls
 message DirEntry {
-    uint32 version = 1;
-    string name    = 2;
-    bytes  id      = 3;
+    uint32    version   = 1;
+    string    name      = 2;
+    bytes     id        = 3;
+    Tombstone tombstone = 4; // If set, this record has been deleted
 }
 
 // FileBlock
@@ -288,3 +305,4 @@ message FileBlock {
     bytes  data     = 2;
     uint32 checksum = 3;
 }
+

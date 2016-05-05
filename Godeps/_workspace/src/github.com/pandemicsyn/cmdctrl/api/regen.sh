@@ -1,4 +1,4 @@
 #!/bin/bash
 set -x
-protoc --gofast_out=plugins=grpc:. *.proto
-go install .
+protoc --go_out=plugins=grpc:. *.proto
+go install -a .

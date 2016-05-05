@@ -43,7 +43,7 @@ func GetHardwareProfile() (*pb.HardwareProfile, error) {
 	if err != nil {
 		return &pb.HardwareProfile{}, err
 	}
-	d, err := disk.DiskPartitions(true)
+	d, err := disk.Partitions(true)
 	if err != nil {
 		return &pb.HardwareProfile{}, err
 	}
@@ -54,14 +54,14 @@ func GetHardwareProfile() (*pb.HardwareProfile, error) {
 		Memfree:  v.Free,
 	}
 	for k := range d {
-		usage, err := disk.DiskUsage(d[k].Mountpoint)
+		usage, err := disk.Usage(d[k].Mountpoint)
 		if err != nil {
 			continue
 		}
 		entry := &pb.Disk{
 			Path:   d[k].Mountpoint,
 			Device: d[k].Device,
-			Size_:  usage.Total,
+			Size:   usage.Total,
 			Used:   usage.Used,
 		}
 		hw.Disks = append(hw.Disks, entry)
@@ -105,18 +105,16 @@ func (s *SRVLoader) getConfig() (*pb.NodeConfig, error) {
 
 func (s *SRVLoader) Load() (nodeconfig *pb.NodeConfig, err error) {
 	if s.SyndicateURL == "" {
-		serviceAddrs, err := lookup(s.Record)
-		if err != nil {
-			return &pb.NodeConfig{}, err
+		// Specific endpoint given
+		if _, _, err := net.SplitHostPort(s.Record); err == nil {
+			s.SyndicateURL = s.Record
+		} else {
+			serviceAddrs, err := lookup(s.Record)
+			if err != nil {
+				return &pb.NodeConfig{}, err
+			}
+			s.SyndicateURL = fmt.Sprintf("%s:%d", serviceAddrs[0].Target, serviceAddrs[0].Port)
 		}
-		s.SyndicateURL = fmt.Sprintf("%s:%d", serviceAddrs[0].Target, serviceAddrs[0].Port)
 	}
-	nodeconfig, err = s.getConfig()
-	if err != nil {
-		if err == ErrSRVLookupFailed {
-			return nodeconfig, err
-		}
-		return nodeconfig, err
-	}
-	return nodeconfig, nil
+	return s.getConfig()
 }

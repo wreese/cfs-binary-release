@@ -21,6 +21,7 @@ import (
 	"github.com/gholt/locmap"
 	"github.com/gholt/ring"
 	"github.com/spaolacci/murmur3"
+	"golang.org/x/net/context"
 )
 
 // defaultGroupStore instances are created with NewGroupStore.
@@ -75,43 +76,52 @@ type defaultGroupStore struct {
 	watcherState            groupWatcherState
 	restartChan             chan error
 
-	statsLock                    sync.Mutex
-	lookups                      int32
-	lookupErrors                 int32
-	lookupGroups                 int32
-	lookupGroupItems             int32
-	reads                        int32
-	readErrors                   int32
-	writes                       int32
-	writeErrors                  int32
-	writesOverridden             int32
-	deletes                      int32
-	deleteErrors                 int32
-	deletesOverridden            int32
-	outBulkSets                  int32
-	outBulkSetValues             int32
-	outBulkSetPushes             int32
-	outBulkSetPushValues         int32
-	inBulkSets                   int32
-	inBulkSetDrops               int32
-	inBulkSetInvalids            int32
-	inBulkSetWrites              int32
-	inBulkSetWriteErrors         int32
-	inBulkSetWritesOverridden    int32
-	outBulkSetAcks               int32
-	inBulkSetAcks                int32
-	inBulkSetAckDrops            int32
-	inBulkSetAckInvalids         int32
-	inBulkSetAckWrites           int32
-	inBulkSetAckWriteErrors      int32
-	inBulkSetAckWritesOverridden int32
-	outPullReplications          int32
-	inPullReplications           int32
-	inPullReplicationDrops       int32
-	inPullReplicationInvalids    int32
-	expiredDeletions             int32
-	compactions                  int32
-	smallFileCompactions         int32
+	statsLock    sync.Mutex
+	lookups      int32
+	lookupErrors int32
+
+	lookupGroups      int32
+	lookupGroupItems  int32
+	lookupGroupErrors int32
+
+	reads      int32
+	readErrors int32
+
+	readGroups      int32
+	readGroupItems  int32
+	readGroupErrors int32
+
+	writes                        int32
+	writeErrors                   int32
+	writesOverridden              int32
+	deletes                       int32
+	deleteErrors                  int32
+	deletesOverridden             int32
+	outBulkSets                   int32
+	outBulkSetValues              int32
+	outBulkSetPushes              int32
+	outBulkSetPushValues          int32
+	inBulkSets                    int32
+	inBulkSetDrops                int32
+	inBulkSetInvalids             int32
+	inBulkSetWrites               int32
+	inBulkSetWriteErrors          int32
+	inBulkSetWritesOverridden     int32
+	outBulkSetAcks                int32
+	inBulkSetAcks                 int32
+	inBulkSetAckDrops             int32
+	inBulkSetAckInvalids          int32
+	inBulkSetAckWrites            int32
+	inBulkSetAckWriteErrors       int32
+	inBulkSetAckWritesOverridden  int32
+	outPullReplications           int32
+	outPullReplicationNanoseconds int64
+	inPullReplications            int32
+	inPullReplicationDrops        int32
+	inPullReplicationInvalids     int32
+	expiredDeletions              int32
+	compactions                   int32
+	smallFileCompactions          int32
 
 	// Used by the flusher only
 	modifications int32
@@ -164,18 +174,20 @@ type groupLocBlock interface {
 //
 // The restart channel (chan error) should be read from continually during the
 // life of the store and, upon any error from the channel, the store should be
-// restarted with Shutdown() and Startup(). This restart procedure is needed
-// when data on disk is detected as corrupted and cannot be easily recovered
-// from; a restart will cause only good entries to be loaded therefore
-// discarding any bad entries due to the corruption. A restart may also be
-// requested if the store reaches an unrecoverable state, such as no longer
-// being able to open new files.
+// restarted with Shutdown and Startup. This restart procedure is needed when
+// data on disk is detected as corrupted and cannot be easily recovered from; a
+// restart will cause only good entries to be loaded therefore discarding any
+// bad entries due to the corruption. A restart may also be requested if the
+// store reaches an unrecoverable state, such as no longer being able to open
+// new files.
 //
 // Note that a lot of buffering, multiple cores, and background processes can
-// be in use and therefore Shutdown() should be called prior to the process
+// be in use and therefore Shutdown should be called prior to the process
 // exiting to ensure all processing is done and the buffers are flushed.
 func NewGroupStore(c *GroupStoreConfig) (GroupStore, chan error) {
 	cfg := resolveGroupStoreConfig(c)
+	_ = os.MkdirAll(cfg.Path, 0755)
+	_ = os.MkdirAll(cfg.PathTOC, 0755)
 	lcmap := cfg.GroupLocMap
 	if lcmap == nil {
 		lcmap = locmap.NewGroupLocMap(nil)
@@ -232,11 +244,11 @@ func NewGroupStore(c *GroupStoreConfig) (GroupStore, chan error) {
 	return store, store.restartChan
 }
 
-func (store *defaultGroupStore) ValueCap() (uint32, error) {
+func (store *defaultGroupStore) ValueCap(ctx context.Context) (uint32, error) {
 	return store.valueCap, nil
 }
 
-func (store *defaultGroupStore) Startup() error {
+func (store *defaultGroupStore) Startup(ctx context.Context) error {
 	store.runningLock.Lock()
 	switch store.running {
 	case 0: // not running
@@ -325,13 +337,13 @@ func (store *defaultGroupStore) Startup() error {
 		}(i, f)
 	}
 	wg.Wait()
-	store.EnableWrites()
+	store.EnableWrites(ctx)
 	store.running = 1 // running
 	store.runningLock.Unlock()
 	return nil
 }
 
-func (store *defaultGroupStore) Shutdown() error {
+func (store *defaultGroupStore) Shutdown(ctx context.Context) error {
 	store.runningLock.Lock()
 	if store.running != 1 { // running
 		store.runningLock.Unlock()
@@ -356,7 +368,7 @@ func (store *defaultGroupStore) Shutdown() error {
 		}(i, f)
 	}
 	wg.Wait()
-	store.DisableWrites()
+	store.DisableWrites(ctx)
 	for _, c := range store.pendingWriteReqChans {
 		c <- shutdownGroupWriteReq
 	}
@@ -377,7 +389,7 @@ func (store *defaultGroupStore) Shutdown() error {
 	return nil
 }
 
-func (store *defaultGroupStore) EnableWrites() error {
+func (store *defaultGroupStore) EnableWrites(ctx context.Context) error {
 	store.enableWrites(true)
 	return nil
 }
@@ -393,7 +405,7 @@ func (store *defaultGroupStore) enableWrites(userCall bool) {
 	store.disableEnableWritesLock.Unlock()
 }
 
-func (store *defaultGroupStore) DisableWrites() error {
+func (store *defaultGroupStore) DisableWrites(ctx context.Context) error {
 	store.disableWrites(true)
 	return nil
 }
@@ -408,7 +420,8 @@ func (store *defaultGroupStore) disableWrites(userCall bool) {
 	}
 	store.disableEnableWritesLock.Unlock()
 }
-func (store *defaultGroupStore) Flush() error {
+
+func (store *defaultGroupStore) Flush(ctx context.Context) error {
 	for _, c := range store.pendingWriteReqChans {
 		c <- flushGroupWriteReq
 	}
@@ -416,10 +429,10 @@ func (store *defaultGroupStore) Flush() error {
 	return nil
 }
 
-func (store *defaultGroupStore) Lookup(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64) (int64, uint32, error) {
+func (store *defaultGroupStore) Lookup(ctx context.Context, keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64) (int64, uint32, error) {
 	atomic.AddInt32(&store.lookups, 1)
 	timestampbits, _, length, err := store.lookup(keyA, keyB, childKeyA, childKeyB)
-	if err != nil {
+	if err != nil && err != errNotFound {
 		atomic.AddInt32(&store.lookupErrors, 1)
 	}
 	return int64(timestampbits >> _TSB_UTIL_BITS), length, err
@@ -428,12 +441,12 @@ func (store *defaultGroupStore) Lookup(keyA uint64, keyB uint64, childKeyA uint6
 func (store *defaultGroupStore) lookup(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64) (uint64, uint32, uint32, error) {
 	timestampbits, id, _, length := store.locmap.Get(keyA, keyB, childKeyA, childKeyB)
 	if id == 0 || timestampbits&_TSB_DELETION != 0 {
-		return timestampbits, id, 0, ErrNotFound
+		return timestampbits, id, 0, errNotFound
 	}
 	return timestampbits, id, length, nil
 }
 
-func (store *defaultGroupStore) LookupGroup(keyA uint64, keyB uint64) ([]LookupGroupItem, error) {
+func (store *defaultGroupStore) LookupGroup(ctx context.Context, keyA uint64, keyB uint64) ([]LookupGroupItem, error) {
 	// Returned []LookupGroupItem is not a []* for less garbage collection and
 	// is likely fine most use cases.
 	atomic.AddInt32(&store.lookupGroups, 1)
@@ -456,10 +469,34 @@ func (store *defaultGroupStore) LookupGroup(keyA uint64, keyB uint64) ([]LookupG
 	return rv[:i], nil
 }
 
-func (store *defaultGroupStore) Read(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64, value []byte) (int64, []byte, error) {
+func (store *defaultGroupStore) ReadGroup(ctx context.Context, keyA uint64, keyB uint64) ([]ReadGroupItem, error) {
+	// Returned []ReadGroupItem is not a []* for less garbage collection and
+	// is likely fine most use cases.
+	atomic.AddInt32(&store.readGroups, 1)
+	items := store.locmap.GetGroup(keyA, keyB)
+	if len(items) == 0 {
+		return nil, nil
+	}
+	rv := make([]ReadGroupItem, len(items))
+	i := 0
+	for _, item := range items {
+		timestampMicro, value, err := store.read(keyA, keyB, item.ChildKeyA, item.ChildKeyB, nil)
+		if err == nil && timestampMicro&_TSB_DELETION == 0 {
+			rv[i].ChildKeyA = item.ChildKeyA
+			rv[i].ChildKeyB = item.ChildKeyB
+			rv[i].TimestampMicro = int64(timestampMicro >> _TSB_UTIL_BITS)
+			rv[i].Value = value
+			i++
+		}
+	}
+	atomic.AddInt32(&store.readGroupItems, int32(i))
+	return rv[:i], nil
+}
+
+func (store *defaultGroupStore) Read(ctx context.Context, keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64, value []byte) (int64, []byte, error) {
 	atomic.AddInt32(&store.reads, 1)
 	timestampbits, value, err := store.read(keyA, keyB, childKeyA, childKeyB, value)
-	if err != nil {
+	if err != nil && err != errNotFound {
 		atomic.AddInt32(&store.readErrors, 1)
 	}
 	return int64(timestampbits >> _TSB_UTIL_BITS), value, err
@@ -468,12 +505,12 @@ func (store *defaultGroupStore) Read(keyA uint64, keyB uint64, childKeyA uint64,
 func (store *defaultGroupStore) read(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64, value []byte) (uint64, []byte, error) {
 	timestampbits, id, offset, length := store.locmap.Get(keyA, keyB, childKeyA, childKeyB)
 	if id == 0 || timestampbits&_TSB_DELETION != 0 || timestampbits&_TSB_LOCAL_REMOVAL != 0 {
-		return timestampbits, value, ErrNotFound
+		return timestampbits, value, errNotFound
 	}
 	return store.locBlock(id).read(keyA, keyB, childKeyA, childKeyB, timestampbits, offset, length, value)
 }
 
-func (store *defaultGroupStore) Write(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64, timestampmicro int64, value []byte) (int64, error) {
+func (store *defaultGroupStore) Write(ctx context.Context, keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64, timestampmicro int64, value []byte) (int64, error) {
 	atomic.AddInt32(&store.writes, 1)
 	if timestampmicro < TIMESTAMPMICRO_MIN {
 		atomic.AddInt32(&store.writeErrors, 1)
@@ -516,7 +553,7 @@ func (store *defaultGroupStore) write(keyA uint64, keyB uint64, childKeyA uint64
 	return ptimestampbits, err
 }
 
-func (store *defaultGroupStore) Delete(keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64, timestampmicro int64) (int64, error) {
+func (store *defaultGroupStore) Delete(ctx context.Context, keyA uint64, keyB uint64, childKeyA uint64, childKeyB uint64, timestampmicro int64) (int64, error) {
 	atomic.AddInt32(&store.deletes, 1)
 	if timestampmicro < TIMESTAMPMICRO_MIN {
 		atomic.AddInt32(&store.deleteErrors, 1)
@@ -677,7 +714,7 @@ func (store *defaultGroupStore) memWriter(pendingWriteReqChan chan *groupWriteRe
 			break
 		}
 		if !enabled && !writeReq.internal {
-			writeReq.errChan <- ErrDisabled
+			writeReq.errChan <- errDisabled
 			continue
 		}
 		length := len(writeReq.value)
@@ -770,6 +807,9 @@ func (store *defaultGroupStore) fileWriter() {
 				memWritersFlushLeft = len(store.pendingWriteReqChans)
 				continue
 			}
+			// This loop is reversed so there isn't a race condition in the
+			// loop check; if you use the usual loop of 0 through len(x), the
+			// use of x in the len will race.
 			for i := len(store.freeableMemBlockChans) - 1; i >= 0; i-- {
 				store.freeableMemBlockChans[i] <- shutdownGroupMemBlock
 			}
@@ -804,7 +844,7 @@ func (store *defaultGroupStore) fileWriter() {
 				disabledDueToError = err
 				disabledDueToErrorLogTime = time.Now().Add(5 * time.Minute)
 				go func() {
-					store.Shutdown()
+					store.Shutdown(context.Background())
 					store.restartChan <- errors.New("no new files can be opened")
 				}()
 			}
@@ -840,7 +880,7 @@ func (store *defaultGroupStore) tocWriter() {
 		store.logCritical("tocWriter: %d %s", point, err)
 		disabled = true
 		go func() {
-			store.Shutdown()
+			store.Shutdown(context.Background())
 			store.restartChan <- errors.New("tocWriter encountered a fatal error; restart required")
 		}()
 	}
@@ -1054,7 +1094,7 @@ func (store *defaultGroupStore) recovery() error {
 	spindown()
 	if store.logDebugOn {
 		dur := time.Now().Sub(start)
-		stringerStats, err := store.Stats(false)
+		stringerStats, err := store.Stats(context.Background(), false)
 		if err != nil {
 			store.logDebug("recovery: stats error: %s", err)
 		} else {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gholt/brimtext"
+	"golang.org/x/net/context"
 )
 
 type GroupStoreStats struct {
@@ -15,16 +16,30 @@ type GroupStoreStats struct {
 	ValueBytes uint64
 	// Lookups is the number of calls to Lookup.
 	Lookups int32
-	// LookupErrors is the number of errors returned by Lookup.
+	// LookupErrors is the number of errors returned by Lookup; not-found
+	// errors do not count here.
 	LookupErrors int32
-	// Reads is the number of calls to Read.
+
 	// LookupGroups is the number of calls to LookupGroup.
 	LookupGroups int32
 	// LookupGroupItems is the number of items LookupGroup has encountered.
 	LookupGroupItems int32
-	Reads            int32
-	// ReadErrors is the number of errors returned by Read.
+	// LookupGroupErrors is the number of errors returned by LookupGroup.
+	LookupGroupErrors int32
+
+	// Reads is the number of calls to Read.
+	Reads int32
+	// ReadErrors is the number of errors returned by Read; not-found errors do
+	// not count here.
 	ReadErrors int32
+
+	// ReadGroups is the number of calls to ReadGroup.
+	ReadGroups int32
+	// ReadGroupItems is the number of items ReadGroup has encountered.
+	ReadGroupItems int32
+	// ReadGroupErrors is the number of errors returned by ReadGroup.
+	ReadGroupErrors int32
+
 	// Writes is the number of calls to Write.
 	Writes int32
 	// WriteErrors is the number of errors returned by Write.
@@ -90,6 +105,9 @@ type GroupStoreStats struct {
 	InBulkSetAckWritesOverridden int32
 	// OutPullReplications is the number of outgoing pull-replication messages.
 	OutPullReplications int32
+	// OutPullReplicationNanoseconds is how long the last out pull replication
+	// pass took.
+	OutPullReplicationNanoseconds int64
 	// InPullReplications is the number of incoming pull-replication messages.
 	InPullReplications int32
 	// InPullReplicationDrops is the number of incoming pull-replication
@@ -173,61 +191,78 @@ type GroupStoreStats struct {
 	locmapDebugInfo            fmt.Stringer
 }
 
-func (store *defaultGroupStore) Stats(debug bool) (fmt.Stringer, error) {
+func (store *defaultGroupStore) Stats(ctx context.Context, debug bool) (fmt.Stringer, error) {
 	store.statsLock.Lock()
 	stats := &GroupStoreStats{
-		Lookups:                      atomic.LoadInt32(&store.lookups),
-		LookupErrors:                 atomic.LoadInt32(&store.lookupErrors),
-		LookupGroups:                 atomic.LoadInt32(&store.lookupGroups),
-		LookupGroupItems:             atomic.LoadInt32(&store.lookupGroupItems),
-		Reads:                        atomic.LoadInt32(&store.reads),
-		ReadErrors:                   atomic.LoadInt32(&store.readErrors),
-		Writes:                       atomic.LoadInt32(&store.writes),
-		WriteErrors:                  atomic.LoadInt32(&store.writeErrors),
-		WritesOverridden:             atomic.LoadInt32(&store.writesOverridden),
-		Deletes:                      atomic.LoadInt32(&store.deletes),
-		DeleteErrors:                 atomic.LoadInt32(&store.deleteErrors),
-		DeletesOverridden:            atomic.LoadInt32(&store.deletesOverridden),
-		OutBulkSets:                  atomic.LoadInt32(&store.outBulkSets),
-		OutBulkSetValues:             atomic.LoadInt32(&store.outBulkSetValues),
-		OutBulkSetPushes:             atomic.LoadInt32(&store.outBulkSetPushes),
-		OutBulkSetPushValues:         atomic.LoadInt32(&store.outBulkSetPushValues),
-		InBulkSets:                   atomic.LoadInt32(&store.inBulkSets),
-		InBulkSetDrops:               atomic.LoadInt32(&store.inBulkSetDrops),
-		InBulkSetInvalids:            atomic.LoadInt32(&store.inBulkSetInvalids),
-		InBulkSetWrites:              atomic.LoadInt32(&store.inBulkSetWrites),
-		InBulkSetWriteErrors:         atomic.LoadInt32(&store.inBulkSetWriteErrors),
-		InBulkSetWritesOverridden:    atomic.LoadInt32(&store.inBulkSetWritesOverridden),
-		OutBulkSetAcks:               atomic.LoadInt32(&store.outBulkSetAcks),
-		InBulkSetAcks:                atomic.LoadInt32(&store.inBulkSetAcks),
-		InBulkSetAckDrops:            atomic.LoadInt32(&store.inBulkSetAckDrops),
-		InBulkSetAckInvalids:         atomic.LoadInt32(&store.inBulkSetAckInvalids),
-		InBulkSetAckWrites:           atomic.LoadInt32(&store.inBulkSetAckWrites),
-		InBulkSetAckWriteErrors:      atomic.LoadInt32(&store.inBulkSetAckWriteErrors),
-		InBulkSetAckWritesOverridden: atomic.LoadInt32(&store.inBulkSetAckWritesOverridden),
-		OutPullReplications:          atomic.LoadInt32(&store.outPullReplications),
-		InPullReplications:           atomic.LoadInt32(&store.inPullReplications),
-		InPullReplicationDrops:       atomic.LoadInt32(&store.inPullReplicationDrops),
-		InPullReplicationInvalids:    atomic.LoadInt32(&store.inPullReplicationInvalids),
-		ExpiredDeletions:             atomic.LoadInt32(&store.expiredDeletions),
-		Compactions:                  atomic.LoadInt32(&store.compactions),
-		SmallFileCompactions:         atomic.LoadInt32(&store.smallFileCompactions),
-		DiskFree:                     atomic.LoadUint64(&store.watcherState.diskFree),
-		DiskUsed:                     atomic.LoadUint64(&store.watcherState.diskUsed),
-		DiskSize:                     atomic.LoadUint64(&store.watcherState.diskSize),
-		DiskFreeTOC:                  atomic.LoadUint64(&store.watcherState.diskFreeTOC),
-		DiskUsedTOC:                  atomic.LoadUint64(&store.watcherState.diskUsedTOC),
-		DiskSizeTOC:                  atomic.LoadUint64(&store.watcherState.diskSizeTOC),
-		MemFree:                      atomic.LoadUint64(&store.watcherState.memFree),
-		MemUsed:                      atomic.LoadUint64(&store.watcherState.memUsed),
-		MemSize:                      atomic.LoadUint64(&store.watcherState.memSize),
+		Lookups:      atomic.LoadInt32(&store.lookups),
+		LookupErrors: atomic.LoadInt32(&store.lookupErrors),
+
+		LookupGroups:      atomic.LoadInt32(&store.lookupGroups),
+		LookupGroupItems:  atomic.LoadInt32(&store.lookupGroupItems),
+		LookupGroupErrors: atomic.LoadInt32(&store.lookupGroupErrors),
+
+		Reads:      atomic.LoadInt32(&store.reads),
+		ReadErrors: atomic.LoadInt32(&store.readErrors),
+
+		ReadGroups:      atomic.LoadInt32(&store.readGroups),
+		ReadGroupItems:  atomic.LoadInt32(&store.readGroupItems),
+		ReadGroupErrors: atomic.LoadInt32(&store.readGroupErrors),
+
+		Writes:                        atomic.LoadInt32(&store.writes),
+		WriteErrors:                   atomic.LoadInt32(&store.writeErrors),
+		WritesOverridden:              atomic.LoadInt32(&store.writesOverridden),
+		Deletes:                       atomic.LoadInt32(&store.deletes),
+		DeleteErrors:                  atomic.LoadInt32(&store.deleteErrors),
+		DeletesOverridden:             atomic.LoadInt32(&store.deletesOverridden),
+		OutBulkSets:                   atomic.LoadInt32(&store.outBulkSets),
+		OutBulkSetValues:              atomic.LoadInt32(&store.outBulkSetValues),
+		OutBulkSetPushes:              atomic.LoadInt32(&store.outBulkSetPushes),
+		OutBulkSetPushValues:          atomic.LoadInt32(&store.outBulkSetPushValues),
+		InBulkSets:                    atomic.LoadInt32(&store.inBulkSets),
+		InBulkSetDrops:                atomic.LoadInt32(&store.inBulkSetDrops),
+		InBulkSetInvalids:             atomic.LoadInt32(&store.inBulkSetInvalids),
+		InBulkSetWrites:               atomic.LoadInt32(&store.inBulkSetWrites),
+		InBulkSetWriteErrors:          atomic.LoadInt32(&store.inBulkSetWriteErrors),
+		InBulkSetWritesOverridden:     atomic.LoadInt32(&store.inBulkSetWritesOverridden),
+		OutBulkSetAcks:                atomic.LoadInt32(&store.outBulkSetAcks),
+		InBulkSetAcks:                 atomic.LoadInt32(&store.inBulkSetAcks),
+		InBulkSetAckDrops:             atomic.LoadInt32(&store.inBulkSetAckDrops),
+		InBulkSetAckInvalids:          atomic.LoadInt32(&store.inBulkSetAckInvalids),
+		InBulkSetAckWrites:            atomic.LoadInt32(&store.inBulkSetAckWrites),
+		InBulkSetAckWriteErrors:       atomic.LoadInt32(&store.inBulkSetAckWriteErrors),
+		InBulkSetAckWritesOverridden:  atomic.LoadInt32(&store.inBulkSetAckWritesOverridden),
+		OutPullReplications:           atomic.LoadInt32(&store.outPullReplications),
+		OutPullReplicationNanoseconds: atomic.LoadInt64(&store.outPullReplicationNanoseconds),
+		InPullReplications:            atomic.LoadInt32(&store.inPullReplications),
+		InPullReplicationDrops:        atomic.LoadInt32(&store.inPullReplicationDrops),
+		InPullReplicationInvalids:     atomic.LoadInt32(&store.inPullReplicationInvalids),
+		ExpiredDeletions:              atomic.LoadInt32(&store.expiredDeletions),
+		Compactions:                   atomic.LoadInt32(&store.compactions),
+		SmallFileCompactions:          atomic.LoadInt32(&store.smallFileCompactions),
+		DiskFree:                      atomic.LoadUint64(&store.watcherState.diskFree),
+		DiskUsed:                      atomic.LoadUint64(&store.watcherState.diskUsed),
+		DiskSize:                      atomic.LoadUint64(&store.watcherState.diskSize),
+		DiskFreeTOC:                   atomic.LoadUint64(&store.watcherState.diskFreeTOC),
+		DiskUsedTOC:                   atomic.LoadUint64(&store.watcherState.diskUsedTOC),
+		DiskSizeTOC:                   atomic.LoadUint64(&store.watcherState.diskSizeTOC),
+		MemFree:                       atomic.LoadUint64(&store.watcherState.memFree),
+		MemUsed:                       atomic.LoadUint64(&store.watcherState.memUsed),
+		MemSize:                       atomic.LoadUint64(&store.watcherState.memSize),
 	}
 	atomic.AddInt32(&store.lookups, -stats.Lookups)
 	atomic.AddInt32(&store.lookupErrors, -stats.LookupErrors)
+
 	atomic.AddInt32(&store.lookupGroups, -stats.LookupGroups)
 	atomic.AddInt32(&store.lookupGroupItems, -stats.LookupGroupItems)
+	atomic.AddInt32(&store.lookupGroupErrors, -stats.LookupGroupErrors)
+
 	atomic.AddInt32(&store.reads, -stats.Reads)
 	atomic.AddInt32(&store.readErrors, -stats.ReadErrors)
+
+	atomic.AddInt32(&store.readGroups, -stats.ReadGroups)
+	atomic.AddInt32(&store.readGroupItems, -stats.ReadGroupItems)
+	atomic.AddInt32(&store.readGroupErrors, -stats.ReadGroupErrors)
+
 	atomic.AddInt32(&store.writes, -stats.Writes)
 	atomic.AddInt32(&store.writeErrors, -stats.WriteErrors)
 	atomic.AddInt32(&store.writesOverridden, -stats.WritesOverridden)
@@ -252,6 +287,7 @@ func (store *defaultGroupStore) Stats(debug bool) (fmt.Stringer, error) {
 	atomic.AddInt32(&store.inBulkSetAckWriteErrors, -stats.InBulkSetAckWriteErrors)
 	atomic.AddInt32(&store.inBulkSetAckWritesOverridden, -stats.InBulkSetAckWritesOverridden)
 	atomic.AddInt32(&store.outPullReplications, -stats.OutPullReplications)
+	// Leaving outPullReplicationNanoseconds alone.
 	atomic.AddInt32(&store.inPullReplications, -stats.InPullReplications)
 	atomic.AddInt32(&store.inPullReplicationDrops, -stats.InPullReplicationDrops)
 	atomic.AddInt32(&store.inPullReplicationInvalids, -stats.InPullReplicationInvalids)
@@ -320,10 +356,18 @@ func (stats *GroupStoreStats) String() string {
 		{"ValueBytes", fmt.Sprintf("%d", stats.ValueBytes)},
 		{"Lookups", fmt.Sprintf("%d", stats.Lookups)},
 		{"LookupErrors", fmt.Sprintf("%d", stats.LookupErrors)},
+
 		{"LookupGroups", fmt.Sprintf("%d", stats.LookupGroups)},
 		{"LookupGroupItems", fmt.Sprintf("%d", stats.LookupGroupItems)},
+		{"LookupGroupErrors", fmt.Sprintf("%d", stats.LookupGroupErrors)},
+
 		{"Reads", fmt.Sprintf("%d", stats.Reads)},
 		{"ReadErrors", fmt.Sprintf("%d", stats.ReadErrors)},
+
+		{"ReadGroups", fmt.Sprintf("%d", stats.ReadGroups)},
+		{"ReadGroupItems", fmt.Sprintf("%d", stats.ReadGroupItems)},
+		{"ReadGroupErrors", fmt.Sprintf("%d", stats.ReadGroupErrors)},
+
 		{"Writes", fmt.Sprintf("%d", stats.Writes)},
 		{"WriteErrors", fmt.Sprintf("%d", stats.WriteErrors)},
 		{"WritesOverridden", fmt.Sprintf("%d", stats.WritesOverridden)},
@@ -348,6 +392,7 @@ func (stats *GroupStoreStats) String() string {
 		{"InBulkSetAckWriteErrors", fmt.Sprintf("%d", stats.InBulkSetAckWriteErrors)},
 		{"InBulkSetAckWritesOverridden", fmt.Sprintf("%d", stats.InBulkSetAckWritesOverridden)},
 		{"OutPullReplications", fmt.Sprintf("%d", stats.OutPullReplications)},
+		{"OutPullReplicationNanoseconds", fmt.Sprintf("%d", stats.OutPullReplicationNanoseconds)},
 		{"InPullReplications", fmt.Sprintf("%d", stats.InPullReplications)},
 		{"InPullReplicationDrops", fmt.Sprintf("%d", stats.InPullReplicationDrops)},
 		{"InPullReplicationInvalids", fmt.Sprintf("%d", stats.InPullReplicationInvalids)},

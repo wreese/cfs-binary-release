@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -11,16 +12,19 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"log"
 	"net"
 
 	"github.com/BurntSushi/toml"
+	log "github.com/Sirupsen/logrus"
 	pb "github.com/pandemicsyn/syndicate/api/proto"
 	"github.com/pandemicsyn/syndicate/syndicate"
+	"github.com/pandemicsyn/syndicate/utils/sysmetrics"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
-	printVersionInfo = flag.Bool("version", false, "print version/build info")
+	printVersionInfo  = flag.Bool("version", false, "print version/build info")
+	enabledCollectors = flag.String("collectors", sysmetrics.FilterAvailableCollectors(sysmetrics.DefaultCollectors), "Comma-separated list of collectors to use.")
 )
 
 var syndVersion string
@@ -100,7 +104,7 @@ func (rs *RingSyndicates) launchSyndicates(k int) {
 
 func main() {
 	var err error
-	configFile := "/etc/oort/syndicate.toml"
+	configFile := "/etc/syndicate/syndicate.toml"
 	if os.Getenv("SYNDICATE_CONFIG") != "" {
 		configFile = os.Getenv("SYNDICATE_CONFIG")
 	}
@@ -142,6 +146,16 @@ func main() {
 	for k, _ := range rs.Syndics {
 		go rs.launchSyndicates(k)
 	}
+	//now that syndics are up and running launch global metrics endpoint
+	//setup node_collector for system level metrics first
+	collectors, err := sysmetrics.LoadCollectors(*enabledCollectors)
+	if err != nil {
+		log.Fatalf("Couldn't load collectors: %s", err)
+	}
+	nodeCollector := sysmetrics.New(collectors)
+	prometheus.MustRegister(nodeCollector)
+	http.Handle("/metrics", prometheus.Handler())
+	go http.ListenAndServe(":9100", nil)
 	ch := make(chan os.Signal)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	for {

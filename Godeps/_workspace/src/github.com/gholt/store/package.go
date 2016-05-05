@@ -120,11 +120,12 @@ package store
 //go:generate got stats.got groupstats_GEN_.go TT=GROUP T=Group t=group
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"math"
 	"os"
+
+	"golang.org/x/net/context"
 )
 
 const (
@@ -149,8 +150,39 @@ const (
 	TIMESTAMPMICRO_MAX = int64(uint64(math.MaxUint64) >> _TSB_UTIL_BITS)
 )
 
-var ErrNotFound error = errors.New("not found")
-var ErrDisabled error = errors.New("disabled")
+func IsNotFound(err error) bool {
+	_, is := err.(ErrNotFound)
+	return is
+}
+
+type ErrNotFound interface {
+	ErrNotFound() string
+}
+
+var errNotFound error = _errNotFound{}
+
+type _errNotFound struct{}
+
+func (e _errNotFound) Error() string { return "not found" }
+
+func (e _errNotFound) ErrNotFound() string { return "not found" }
+
+func IsDisabled(err error) bool {
+	_, is := err.(ErrDisabled)
+	return is
+}
+
+type ErrDisabled interface {
+	ErrDisabled() string
+}
+
+var errDisabled error = _errDisabled{}
+
+type _errDisabled struct{}
+
+func (e _errDisabled) Error() string { return "disabled" }
+
+func (e _errDisabled) ErrDisabled() string { return "disabled" }
 
 var toss []byte = make([]byte, 65536)
 
@@ -191,31 +223,31 @@ type bgNotification struct {
 // Store is an interface shared by ValueStore and GroupStore containing basic
 // command and control functions.
 //
-// Every method may return an error because this interface is often used over a
-// remote transport.
+// Every method accepts a Context and may return an error because this
+// interface is often used over a remote transport.
 type Store interface {
 	// Startup will start up everything needed to start using the Store or
 	// return an error; on creation, a Store will not yet be started up.
-	Startup() error
+	Startup(ctx context.Context) error
 	// Shutdown will ensure buffered data is written to disk and will shutdown
 	// the Store; the Store will be unusable until Startup is called again.
-	Shutdown() error
+	Shutdown(ctx context.Context) error
 	// EnableWrites will switch the Store to read-write mode, assuming the
 	// Store supports writes; this is the default mode of most stores after
 	// Startup, but it doesn't hurt to call it anyway to be sure.
-	EnableWrites() error
+	EnableWrites(ctx context.Context) error
 	// DisableWrites will switch the Store to a read-only mode until
 	// EnableWrites is called.
-	DisableWrites() error
+	DisableWrites(ctx context.Context) error
 	// Flush will ensure buffered data, at the time of the call, is written to
 	// disk.
-	Flush() error
+	Flush(ctx context.Context) error
 	// AuditPass will immediately execute a pass at full speed to check the
 	// on-disk data for errors rather than waiting for the next interval to run
 	// the standard slow-audit pass. If a pass is currently executing, it will
 	// be stopped and restarted so that a call to this function ensures one
 	// complete pass occurs.
-	AuditPass() error
+	AuditPass(ctx context.Context) error
 	// Stats returns overall information about the state of the Store. Note
 	// that this can be an expensive call; debug = true will make it even more
 	// expensive.
@@ -233,9 +265,9 @@ type Store interface {
 	// The various values reported when debug=true are left undocumented
 	// because they are subject to change. They are only emitted when the
 	// stats.String() is called.
-	Stats(debug bool) (fmt.Stringer, error)
+	Stats(ctx context.Context, debug bool) (fmt.Stringer, error)
 	// ValueCap returns the maximum length of a value the Store can accept.
-	ValueCap() (uint32, error)
+	ValueCap(ctx context.Context) (uint32, error)
 }
 
 // ValueStore is an interface for a disk-backed data structure that stores
@@ -248,7 +280,7 @@ type ValueStore interface {
 	// keyB) was not known at all whereas err == ErrNotFound with
 	// timestampmicro != 0 indicates (keyA, keyB) was known and had a deletion
 	// marker (aka tombstone).
-	Lookup(keyA uint64, keyB uint64) (int64, uint32, error)
+	Lookup(ctx context.Context, keyA uint64, keyB uint64) (int64, uint32, error)
 	// Read will return (timestampmicro, value, err) for (keyA, keyB); if an
 	// incoming value is provided, any value read from the store will be
 	// appended to it and the whole returned (useful to reuse an existing
@@ -258,18 +290,18 @@ type ValueStore interface {
 	// keyB) was not known at all whereas err == ErrNotFound with
 	// timestampmicro != 0 indicates (keyA, keyB) was known and had a deletion
 	// marker (aka tombstone).
-	Read(keyA uint64, keyB uint64, value []byte) (int64, []byte, error)
+	Read(ctx context.Context, keyA uint64, keyB uint64, value []byte) (int64, []byte, error)
 	// Write stores (timestampmicro, value) for (keyA, keyB) and returns the
 	// previously stored timestampmicro or returns any error; a newer
 	// timestampmicro already in place is not reported as an error. Note that
 	// with a Write and a Delete for the exact same timestampmicro, the Delete
 	// wins.
-	Write(keyA uint64, keyB uint64, timestampmicro int64, value []byte) (int64, error)
+	Write(ctx context.Context, keyA uint64, keyB uint64, timestampmicro int64, value []byte) (int64, error)
 	// Delete stores timestampmicro for (keyA, keyB) and returns the previously
 	// stored timestampmicro or returns any error; a newer timestampmicro
 	// already in place is not reported as an error. Note that with a Write and
 	// a Delete for the exact same timestampmicro, the Delete wins.
-	Delete(keyA uint64, keyB uint64, timestampmicro int64) (int64, error)
+	Delete(ctx context.Context, keyA uint64, keyB uint64, timestampmicro int64) (int64, error)
 }
 
 // LookupGroupItem is returned by the GroupStore.LookupGroup call.
@@ -278,6 +310,14 @@ type LookupGroupItem struct {
 	ChildKeyB      uint64
 	TimestampMicro int64
 	Length         uint32
+}
+
+// ReadGroupItem is returned by the GroupStore.ReadGroup call.
+type ReadGroupItem struct {
+	ChildKeyA      uint64
+	ChildKeyB      uint64
+	TimestampMicro int64
+	Value          []byte
 }
 
 // GroupStore is an interface for a disk-backed data structure that stores
@@ -295,10 +335,10 @@ type GroupStore interface {
 	// whereas err == ErrNotFound with timestampmicro != 0 indicates
 	// (parentKeyA, parentKeyB, childKeyA, childKeyB) was known and had a
 	// deletion marker (aka tombstone).
-	Lookup(parentKeyA, parentKeyB, childKeyA, childKeyB uint64) (timestampmicro int64, length uint32, err error)
+	Lookup(ctx context.Context, parentKeyA, parentKeyB, childKeyA, childKeyB uint64) (timestampmicro int64, length uint32, err error)
 	// LookupGroup returns all the (childKeyA, childKeyB, timestampMicro,
 	// length) items matching under (parentKeyA, parentKeyB).
-	LookupGroup(parentKeyA, parentKeyB uint64) ([]LookupGroupItem, error)
+	LookupGroup(ctx context.Context, parentKeyA, parentKeyB uint64) ([]LookupGroupItem, error)
 	// Read will return (timestampmicro, value, err) for (parentKeyA,
 	// parentKeyB, childKeyA, childKeyB); if an incoming value is provided, any
 	// value read from the store will be appended to it and the whole returned
@@ -309,19 +349,22 @@ type GroupStore interface {
 	// whereas err == ErrNotFound with timestampmicro != 0 indicates
 	// (parentKeyA, parentKeyB, childKeyA, childKeyB) was known and had a
 	// deletion marker (aka tombstone).
-	Read(parentKeyA, parentKeyB, childKeyA, childKeyB uint64, value []byte) (timestampmicro int64, rvalue []byte, err error)
+	Read(ctx context.Context, parentKeyA, parentKeyB, childKeyA, childKeyB uint64, value []byte) (timestampmicro int64, rvalue []byte, err error)
 	// Write stores (timestampmicro, value) for (parentKeyA, parentKeyB,
 	// childKeyA, childKeyB) and returns the previously stored timestampmicro
 	// or returns any error; a newer timestampmicro already in place is not
 	// reported as an error. Note that with a Write and a Delete for the exact
 	// same timestampmicro, the Delete wins.
-	Write(parentKeyA, parentKeyB, childKeyA, childKeyB uint64, timestampmicro int64, value []byte) (oldtimestampmicro int64, err error)
+	// ReadGroup returns all the (childKeyA, childKeyB, timestampMicro, value)
+	// items matching under (parentKeyA, parentKeyB).
+	ReadGroup(ctx context.Context, parentKeyA, parentKeyB uint64) ([]ReadGroupItem, error)
+	Write(ctx context.Context, parentKeyA, parentKeyB, childKeyA, childKeyB uint64, timestampmicro int64, value []byte) (oldtimestampmicro int64, err error)
 	// Delete stores timestampmicro for (parentKeyA, parentKeyB, childKeyA,
 	// childKeyB) and returns the previously stored timestampmicro or returns
 	// any error; a newer timestampmicro already in place is not reported as an
 	// error. Note that with a Write and a Delete for the exact same
 	// timestampmicro, the Delete wins.
-	Delete(parentKeyA, parentKeyB, childKeyA, childKeyB uint64, timestampmicro int64) (oldtimestampmicro int64, err error)
+	Delete(ctx context.Context, parentKeyA, parentKeyB, childKeyA, childKeyB uint64, timestampmicro int64) (oldtimestampmicro int64, err error)
 }
 
 func closeIfCloser(thing interface{}) error {

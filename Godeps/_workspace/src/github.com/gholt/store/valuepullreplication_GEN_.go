@@ -316,7 +316,7 @@ func (store *defaultValueStore) inPullReplication(wg *sync.WaitGroup) {
 			var err error
 			for i := 0; i < len(k); i += 2 {
 				t, v, err = store.read(k[i], k[i+1], v[:0])
-				if err == ErrNotFound {
+				if IsNotFound(err) {
 					if t == 0 {
 						continue
 					}
@@ -392,7 +392,9 @@ func (store *defaultValueStore) outPullReplicationPass(notifyChan chan *bgNotifi
 	}
 	begin := time.Now()
 	defer func() {
-		store.logDebug("outPullReplication: pass took %s", time.Now().Sub(begin))
+		elapsed := time.Now().Sub(begin)
+		store.logDebug("outPullReplication: pass took %s", elapsed)
+		atomic.StoreInt64(&store.outPullReplicationNanoseconds, elapsed.Nanoseconds())
 	}()
 	rightwardPartitionShift := 64 - ring.PartitionBitCount()
 	partitionCount := uint64(1) << ring.PartitionBitCount()
