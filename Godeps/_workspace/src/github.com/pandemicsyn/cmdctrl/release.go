@@ -61,7 +61,7 @@ func (g *GithubUpdater) Upgrade(version string) error {
 	err = update.Apply(resp.Body, opts)
 	if err != nil {
 		if rerr := update.RollbackError(err); rerr != nil {
-			fmt.Println("Failed to rollback from bad update: %v", rerr)
+			fmt.Printf("Failed to rollback from bad update: %v\n", rerr)
 		}
 	}
 	return err
@@ -81,7 +81,7 @@ func (g *GithubUpdater) Downgrade(version string) error {
 	err = update.Apply(resp.Body, opts)
 	if err != nil {
 		if rerr := update.RollbackError(err); rerr != nil {
-			fmt.Println("Failed to rollback from bad update: %v", rerr)
+			fmt.Printf("Failed to rollback from bad update: %v\n", rerr)
 		}
 	}
 	return err

@@ -163,11 +163,11 @@
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/cmdctrl",
-			"Rev": "dc8d83e3d0ac14b06d37efa57ae5e451604cbfaf"
+			"Rev": "d9ab278cc73612c693b9e0aaf1bf65674b734515"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/cmdctrl/api",
-			"Rev": "dc8d83e3d0ac14b06d37efa57ae5e451604cbfaf"
+			"Rev": "d9ab278cc73612c693b9e0aaf1bf65674b734515"
 		},
 		{
 			"ImportPath": "github.com/pandemicsyn/ftls",
