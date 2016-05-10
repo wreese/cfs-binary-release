@@ -144,6 +144,18 @@
 			"Rev": "7cc19b78d562895b13596ddce7aafb59dd789318"
 		},
 		{
+			"ImportPath": "github.com/inconshreveable/go-update",
+			"Rev": "8152e7eb6ccf8679a64582a66b78519688d156ad"
+		},
+		{
+			"ImportPath": "github.com/inconshreveable/go-update/internal/binarydist",
+			"Rev": "8152e7eb6ccf8679a64582a66b78519688d156ad"
+		},
+		{
+			"ImportPath": "github.com/inconshreveable/go-update/internal/osext",
+			"Rev": "8152e7eb6ccf8679a64582a66b78519688d156ad"
+		},
+		{
 			"ImportPath": "github.com/kolo/xmlrpc",
 			"Rev": "0826b98aaa29c0766956cb40d45cf7482a597671"
 		},
